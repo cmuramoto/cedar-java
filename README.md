@@ -11,7 +11,7 @@ Another advantage of representing data off-heap is that the trie can be triviall
 
 ### Usage
 
-This library requires no additional dependencies, but requires some jvm args in order to work:
+This library requires no additional dependencies, but requires some **jvm args** in order to work:
 
 
 ```none
@@ -29,12 +29,23 @@ cedar.update("some_key", 0);
 
 var array = new String[]{"one", "two", "three"};
 
-// bulk update, values will be incremented according to array index
-cedar.update(array);
+/*
+ * Bulk update, values will be incremented according to array index.
+ * This is a convenience method. Performance is the same as iterating
+ * over the array and calling update for each key.
+ */ 
+cedar.build(array);
+
+// var-args bulk update version
+cedar.build("four", "five", "six");
 
 // bulk update by pairs of key/values
 var map = Map.of("foo", 17, "bar", 22);
-cedar.update(map);
+cedar.build(map);
+
+// bulk update by 'tuples'
+var map = List.of(new AbstractMap.SimpleEntry<>("roo", 12), new AbstractMap.SimpleEntry<>("baz", 26));
+cedar.build(map);
 
 ```
 
@@ -77,18 +88,16 @@ List<TextMatch> matches = cedar.scan(text).toList();
 **Finding by prefix and completing corresponding suffixes**
 
 ```java
-var values = vec("banana", "barata", "bacanal", "bacalhau", "mustnotmatch_ba");
-var m = toMap(values);
 var cedar = new Cedar();
-cedar.build(m);
+cedar.build("banana", "barata", "bacanal", "bacalhau", "mustnotmatch_ba");
 
 var prefix = "ba";
 
 var matched = cedar.predict(prefix).mapToInt(match -> {
 	var found = values[match.value()];
 
-  // Completes a suffix of corresponding length, by starting at cursor from.
-  // Based on original C cedar
+        // Completes a suffix of corresponding length, by starting at cursor from.
+        // Based on original C cedar
 	var suffix = cedar.suffix(match.from(), match.length());
 
 	assertEquals(prefix.length() + suffix.length(), found.length());
@@ -116,6 +125,16 @@ universe.forEach(match-> {
 });
 ```
 
+Keys and values can be fetched via:
+
+```java
+
+// This will trigger allocations, since data is off-heap!
+Stream<String> keys = cedar.keys();
+
+IntStream values = cedar.values();
+```
+
 ### Serialization
 
 Cedar trie basically encapsulates 4 flat off-heap arrays, which translates to trivial copy operations:
@@ -123,7 +142,7 @@ Cedar trie basically encapsulates 4 flat off-heap arrays, which translates to tr
 ```java
 var cedar = new Cedar();
 
-cedar.buid(...keys);
+cedar.buid("key1", "key2");
 
 var tmp = Files.createTempFile("cedar", "bin");
 
@@ -137,12 +156,10 @@ cedar = Cedar.deserialize(tmp, false);
  * If update triggers a resize, the internal buffer will grow but won't be mmaped anymore. 
  * Currently there's no auto-sync support, the trie has to be serialized again.
  */
-cedar.update("foo",26);
+cedar.update("foo", 26);
 
 // deserialization with copy. File is mmaped, data is copied to internal buffers and then the mapping released.
 cedar = Cedar.deserialize(tmp, true);
-
-
 ```
 
 

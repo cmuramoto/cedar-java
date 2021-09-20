@@ -107,4 +107,27 @@ public class CedarExtraTests {
 		matches[5].expect("bar", 8, 11, 3);
 	}
 
+	@Test
+	public void test_scan2() {
+		var cedar = new Cedar();
+		// ---------012345678910
+		var text = "foo foo bar";
+
+		cedar.update("fo", 0);
+		cedar.update("foo", 1);
+		cedar.update("ba", 2);
+		cedar.update("bar", 3);
+
+		var matches = cedar.scan(text).map(tm -> new ScanMatch(text, tm)).toArray(ScanMatch[]::new);
+
+		assertEquals(6, matches.length);
+
+		matches[0].expect("fo", 0, 2, 0);
+		matches[1].expect("foo", 0, 3, 1);
+		matches[2].expect("fo", 4, 6, 0);
+		matches[3].expect("foo", 4, 7, 1);
+		matches[4].expect("ba", 8, 10, 2);
+		matches[5].expect("bar", 8, 11, 3);
+	}
+
 }

@@ -69,8 +69,6 @@ abstract class CedarBuffer {
 		}
 
 		this.buffer = next;
-
-		// this.cap += more;
 	}
 
 	final boolean isMapped() {
@@ -83,20 +81,15 @@ abstract class CedarBuffer {
 	}
 
 	final void resize(long newSize, long unit) {
-		var newLen = newSize * unit;
-
-		var next = MemorySegment.allocateNative(newLen, alignment()).share();
-
-		next.copyFrom(this.buffer);
+		grow(newSize, unit);
 
 		var ix = this.pos;
 		this.pos = newSize;
-		this.buffer = next;
-		// this.cap = newSize;
 
+		var curr = this.buffer;
 		var off = toOffset(ix, unit);
 		for (; ix < newSize; ix++) {
-			set(next, off);
+			set(curr, off);
 			off += unit;
 		}
 	}

@@ -19,7 +19,7 @@ public class CedarSerializationTests {
 
 	private void run(Cedar cedar, String[] dict) {
 		for (var i = 0; i < dict.length; i++) {
-			assertEquals(i, cedar.exact_match_search(dict[i]).value());
+			assertEquals(i, cedar.get(dict[i]).value());
 		}
 	}
 

@@ -910,6 +910,12 @@ public class Cedar /* implements AutoCloseable */ {
 		s.p(p);
 	}
 
+	public void build(byte[]... keys) {
+		for (var i = 0; i < keys.length; i++) {
+			update(keys[i], i);
+		}
+	}
+
 	public void build(Collection<Map.Entry<String, Integer>> kv) {
 		for (var e : kv) {
 			update(e.getKey(), e.getValue());
@@ -919,6 +925,12 @@ public class Cedar /* implements AutoCloseable */ {
 	public void build(Map<String, Integer> kv) {
 		for (var e : kv.entrySet()) {
 			update(e.getKey(), e.getValue());
+		}
+	}
+
+	public void build(String... keys) {
+		for (var i = 0; i < keys.length; i++) {
+			update(keys[i], i);
 		}
 	}
 
@@ -934,25 +946,12 @@ public class Cedar /* implements AutoCloseable */ {
 		close(reject);
 	}
 
-	public Iterator<Match> common_prefix_iter(byte[] utf8) {
+	Iterator<Match> common_prefix_iter(byte[] utf8) {
 		return new PrefixIter(utf8);
 	}
 
-	public Iterator<Match> common_prefix_iter(String key) {
+	Iterator<Match> common_prefix_iter(String key) {
 		return common_prefix_iter(utf8(key));
-	}
-
-	public Stream<Match> common_prefix_predict(byte[] utf8) {
-		return new PrefixPredictIter(utf8).stream();
-	}
-
-	public Stream<Match> common_prefix_search(byte[] utf8) {
-		return new PrefixIter(utf8).stream();
-	}
-
-	public Stream<Match> common_prefix_search(String key) {
-
-		return common_prefix_search(utf8(key));
 	}
 
 	boolean consult(int base_n, int base_p, byte c_n, byte c_p) {
@@ -1002,19 +1001,6 @@ public class Cedar /* implements AutoCloseable */ {
 
 	public void erase(String key) {
 		erase(utf8(key));
-	}
-
-	Match exact_match_search(String str) {
-		var key = utf8(str);
-		var from = new Ptr();
-
-		var r = find(key, from).orElse(CEDAR_NO_VALUE);
-
-		if (r == CEDAR_NO_VALUE) {
-			return null;
-		} else {
-			return new Match(r, key.length, from.v);
-		}
 	}
 
 	OptionalInt find(byte[] key, Ptr from) {
@@ -1154,6 +1140,22 @@ public class Cedar /* implements AutoCloseable */ {
 		return to;
 	}
 
+	public Match get(byte[] utf8) {
+		var from = new Ptr();
+
+		var r = find(utf8, from).orElse(CEDAR_NO_VALUE);
+
+		if (r == CEDAR_NO_VALUE) {
+			return null;
+		} else {
+			return new Match(r, utf8.length, from.v);
+		}
+	}
+
+	public Match get(String str) {
+		return get(utf8(str));
+	}
+
 	int get_head(int type) {
 		return switch (type) {
 		case BLOCK_TYPE_OPEN -> blocks_head_open;
@@ -1282,8 +1284,12 @@ public class Cedar /* implements AutoCloseable */ {
 
 	}
 
+	public Stream<Match> predict(byte[] utf8) {
+		return new PrefixPredictIter(utf8).stream();
+	}
+
 	public Stream<Match> predict(String key) {
-		return common_prefix_predict(utf8(key));
+		return predict(utf8(key));
 	}
 
 	private void push_block(int idx, int to, boolean empty) {
@@ -1615,6 +1621,10 @@ public class Cedar /* implements AutoCloseable */ {
 		push_block(idx, to, isEmpty);
 	}
 
+	public void update(byte[] utf8, int value) {
+		update(utf8, value, 0, 0);
+	}
+
 	private int update(byte[] key, int value, long from, int pos) {
 		if (from == 0 && key.length == 0) {
 			throw new UnsupportedOperationException("Empty key");
@@ -1636,5 +1646,14 @@ public class Cedar /* implements AutoCloseable */ {
 
 	public IntStream values() {
 		return predict("").mapToInt(Match::value);
+	}
+
+	public Stream<Match> withCommonPrefix(byte[] utf8) {
+		return new PrefixIter(utf8).stream();
+	}
+
+	public Stream<Match> withCommonPrefix(String key) {
+
+		return withCommonPrefix(utf8(key));
 	}
 }

@@ -79,17 +79,17 @@ public class CedarWoodTests {
 		var cedar = new Cedar();
 		cedar.build(key_values);
 
-		var result = cedar.common_prefix_search("abcdefg").mapToInt(Match::value).toArray();
+		var result = cedar.withCommonPrefix("abcdefg").mapToInt(Match::value).toArray();
 
 		assertArrayEquals(vec(0, 1, 2), result);
 
-		result = cedar.common_prefix_search("网球拍卖会").mapToInt(Match::value).toArray();
+		result = cedar.withCommonPrefix("网球拍卖会").mapToInt(Match::value).toArray();
 		assertArrayEquals(vec(6, 7, 8), result);
 
-		result = cedar.common_prefix_search("中华人民共和国").mapToInt(Match::value).toArray();
+		result = cedar.withCommonPrefix("中华人民共和国").mapToInt(Match::value).toArray();
 		assertArrayEquals(vec(9, 10, 11, 12), result);
 
-		result = cedar.common_prefix_search("データ構造とアルゴリズム").mapToInt(Match::value).toArray();
+		result = cedar.withCommonPrefix("データ構造とアルゴリズム").mapToInt(Match::value).toArray();
 
 		assertArrayEquals(vec(4), result);
 	}
@@ -101,10 +101,10 @@ public class CedarWoodTests {
 		var cedar = new Cedar();
 		cedar.build(key_values);
 
-		assertEquals(6, cedar.exact_match_search("亞").value());
-		assertEquals(8, cedar.exact_match_search("亞丁港").value());
-		assertEquals(4, cedar.exact_match_search("亝").value());
-		assertEquals(1, cedar.exact_match_search("些須").value());
+		assertEquals(6, cedar.get("亞").value());
+		assertEquals(8, cedar.get("亞丁港").value());
+		assertEquals(4, cedar.get("亝").value());
+		assertEquals(1, cedar.get("些須").value());
 	}
 
 	@Test
@@ -114,24 +114,24 @@ public class CedarWoodTests {
 		var cedar = new Cedar();
 		cedar.build(key_values);
 
-		assertEquals(0, cedar.exact_match_search("a").value());
-		assertEquals(1, cedar.exact_match_search("ab").value());
-		assertEquals(2, cedar.exact_match_search("abc").value());
+		assertEquals(0, cedar.get("a").value());
+		assertEquals(1, cedar.get("ab").value());
+		assertEquals(2, cedar.get("abc").value());
 
 		cedar.erase("abc");
-		assertEquals(0, cedar.exact_match_search("a").value());
-		assertEquals(1, cedar.exact_match_search("ab").value());
-		assertNull(cedar.exact_match_search("abc"));
+		assertEquals(0, cedar.get("a").value());
+		assertEquals(1, cedar.get("ab").value());
+		assertNull(cedar.get("abc"));
 
 		cedar.erase("ab");
-		assertEquals(0, cedar.exact_match_search("a").value());
-		assertNull(cedar.exact_match_search("ab"));
-		assertNull(cedar.exact_match_search("abc"));
+		assertEquals(0, cedar.get("a").value());
+		assertNull(cedar.get("ab"));
+		assertNull(cedar.get("abc"));
 
 		cedar.erase("a");
-		assertNull(cedar.exact_match_search("a"));
-		assertNull(cedar.exact_match_search("ab"));
-		assertNull(cedar.exact_match_search("abc"));
+		assertNull(cedar.get("a"));
+		assertNull(cedar.get("ab"));
+		assertNull(cedar.get("abc"));
 	}
 
 	@Test
@@ -141,7 +141,7 @@ public class CedarWoodTests {
 		var cedar = new Cedar();
 		cedar.build(key_values);
 
-		var result = cedar.exact_match_search("abc");
+		var result = cedar.get("abc");
 		assertEquals(2, result.value());
 	}
 
@@ -152,29 +152,29 @@ public class CedarWoodTests {
 		var cedar = new Cedar();
 		cedar.build(key_values);
 
-		var result = cedar.exact_match_search("a");
+		var result = cedar.get("a");
 		assertEquals(0, result.value());
 
-		result = cedar.exact_match_search("ab");
+		result = cedar.get("ab");
 		assertNull(result);
 
 		cedar.update("ab", 1);
-		result = cedar.exact_match_search("ab");
+		result = cedar.get("ab");
 		assertEquals(1, result.value());
 
 		cedar.erase("ab");
-		result = cedar.exact_match_search("ab");
+		result = cedar.get("ab");
 		assertNull(result);
 
 		cedar.update("abc", 2);
-		result = cedar.exact_match_search("abc");
+		result = cedar.get("abc");
 		assertEquals(2, result.value());
 
 		cedar.erase("abc");
-		result = cedar.exact_match_search("abc");
+		result = cedar.get("abc");
 		assertNull(result);
 
-		result = cedar.exact_match_search("a");
+		result = cedar.get("a");
 		assertEquals(0, result.value());
 	}
 
@@ -195,9 +195,9 @@ public class CedarWoodTests {
 
 		for (var i = 0; i < dict.size(); i++) {
 			var s = dict.get(i);
-			assertEquals(i, cedar.exact_match_search(s).value());
+			assertEquals(i, cedar.get(s).value());
 			cedar.erase(s);
-			assertNull(cedar.exact_match_search(s));
+			assertNull(cedar.get(s));
 		}
 	}
 
@@ -217,7 +217,7 @@ public class CedarWoodTests {
 		cedar.build(key_values);
 
 		for (var i = 0; i < max; i++) {
-			assertEquals(i, cedar.exact_match_search(dict.get(i)).value());
+			assertEquals(i, cedar.get(dict.get(i)).value());
 		}
 	}
 
@@ -239,7 +239,7 @@ public class CedarWoodTests {
 
 		for (var i = 0; i < max; i++) {
 			var s = dict.get(i);
-			assertEquals(i, cedar.exact_match_search(s).value());
+			assertEquals(i, cedar.get(s).value());
 		}
 	}
 
@@ -251,7 +251,7 @@ public class CedarWoodTests {
 		var cedar = new Cedar();
 		cedar.build(key_values);
 
-		var result = cedar.common_prefix_search("abcde\u0301\u1100\u1161\uAC00").mapToInt(Match::value).toArray();
+		var result = cedar.withCommonPrefix("abcde\u0301\u1100\u1161\uAC00").mapToInt(Match::value).toArray();
 		assertArrayEquals(vec(0, 1, 2), result);
 	}
 
@@ -263,7 +263,7 @@ public class CedarWoodTests {
 		var cedar = new Cedar();
 		cedar.build(key_values);
 
-		var result = cedar.common_prefix_search("讥䶯䶰䶱䶲䶳䶴䶵𦡦").mapToInt(Match::value).toArray();
+		var result = cedar.withCommonPrefix("讥䶯䶰䶱䶲䶳䶴䶵𦡦").mapToInt(Match::value).toArray();
 		assertArrayEquals(vec(0, 1, 2), result);
 	}
 
@@ -276,11 +276,11 @@ public class CedarWoodTests {
 
 		cedar.update("abcd", 3);
 
-		assertEquals(0, cedar.exact_match_search("a").value());
-		assertEquals(1, cedar.exact_match_search("ab").value());
-		assertEquals(2, cedar.exact_match_search("abc").value());
-		assertEquals(3, cedar.exact_match_search("abcd").value());
-		assertNull(cedar.exact_match_search("abcde"));
+		assertEquals(0, cedar.get("a").value());
+		assertEquals(1, cedar.get("ab").value());
+		assertEquals(2, cedar.get("abc").value());
+		assertEquals(3, cedar.get("abcd").value());
+		assertNull(cedar.get("abcde"));
 
 		dict = vec("a", "ab", "abc");
 		key_values = toMap(dict);
@@ -291,11 +291,11 @@ public class CedarWoodTests {
 		cedar.update("badge", 3);
 		cedar.update("baby", 4);
 
-		assertEquals(1, cedar.exact_match_search("bachelor").value());
-		assertEquals(2, cedar.exact_match_search("jar").value());
-		assertEquals(3, cedar.exact_match_search("badge").value());
-		assertEquals(4, cedar.exact_match_search("baby").value());
-		assertNull(cedar.exact_match_search("abcde"));
+		assertEquals(1, cedar.get("bachelor").value());
+		assertEquals(2, cedar.get("jar").value());
+		assertEquals(3, cedar.get("badge").value());
+		assertEquals(4, cedar.get("baby").value());
+		assertNull(cedar.get("abcde"));
 
 		dict = vec("a", "ab", "abc");
 		key_values = toMap(dict);
@@ -307,11 +307,11 @@ public class CedarWoodTests {
 		cedar.update("中华人民", 3);
 		cedar.update("中华人民共和国", 4);
 
-		assertEquals(1, cedar.exact_match_search("中").value());
-		assertEquals(2, cedar.exact_match_search("中华").value());
-		assertEquals(3, cedar.exact_match_search("中华人民").value());
-		assertEquals(4, cedar.exact_match_search("中华人民共和国").value());
-		assertNull(cedar.exact_match_search("abcde"));
+		assertEquals(1, cedar.get("中").value());
+		assertEquals(2, cedar.get("中华").value());
+		assertEquals(3, cedar.get("中华人民").value());
+		assertEquals(4, cedar.get("中华人民共和国").value());
+		assertNull(cedar.get("abcde"));
 	}
 
 }

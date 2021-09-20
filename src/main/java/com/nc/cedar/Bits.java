@@ -10,6 +10,7 @@ public final class Bits {
 	static final Unsafe U;
 	static final long C_OFF;
 	static final long V_OFF;
+	static final byte[] EMPTY;
 
 	static {
 		try {
@@ -18,6 +19,7 @@ public final class Bits {
 			U = (Unsafe) f.get(null);
 			C_OFF = U.objectFieldOffset(String.class, "coder");
 			V_OFF = U.objectFieldOffset(String.class, "value");
+			EMPTY = unwrap("");
 		} catch (Throwable e) {
 			throw new ExceptionInInitializerError(e);
 		}
@@ -33,8 +35,8 @@ public final class Bits {
 
 	static byte[] utf8(String s) {
 		byte[] rv;
-		if (s == null) {
-			rv = null;
+		if (s == null || s.isEmpty()) {
+			rv = EMPTY;
 		} else if (coder(s) == 0) {
 			rv = unwrap(s);
 		} else {

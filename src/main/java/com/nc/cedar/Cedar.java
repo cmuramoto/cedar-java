@@ -1,5 +1,6 @@
 package com.nc.cedar;
 
+import static com.nc.cedar.Bits.UTF8;
 import static com.nc.cedar.Bits.utf8;
 import static jdk.incubator.foreign.MemoryAccess.getByteAtOffset;
 import static jdk.incubator.foreign.MemoryAccess.getIntAtOffset;
@@ -13,7 +14,6 @@ import static jdk.incubator.foreign.MemoryAccess.setShortAtOffset;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel.MapMode;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -710,8 +710,6 @@ public class Cedar /* implements AutoCloseable */ {
 
 		void value(OptionalInt value);
 	}
-
-	static final Charset UTF8 = Charset.forName("UTF-8");
 
 	static final int BLOCK_TYPE_CLOSED = 0;
 

@@ -86,17 +86,29 @@ abstract class CedarBuffer {
 	}
 
 	final void resize(long newSize, long unit) {
-		grow(newSize, unit);
+		var newLen = newSize * unit;
+		var next = MemorySegment.allocateNative(newLen, alignment()).share();
+		var curr = this.buffer;
+
+		if (curr.byteSize() > next.byteSize()) {
+			next.copyFrom(curr.asSlice(0, next.byteSize()));
+		} else {
+			next.copyFrom(curr);
+		}
+		if (!curr.isMapped()) {
+			this.buffer.close();
+		}
 
 		var ix = this.pos;
 		this.pos = newSize;
 
-		var curr = this.buffer;
 		var off = toOffset(ix, unit);
 		for (; ix < newSize; ix++) {
-			set(curr, off);
+			set(next, off);
 			off += unit;
 		}
+
+		this.buffer = next;
 	}
 
 	@SuppressWarnings("unused")

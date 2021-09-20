@@ -954,14 +954,10 @@ public class Cedar /* implements AutoCloseable */ {
 	}
 
 	boolean consult(int base_n, int base_p, byte c_n, byte c_p) {
-		for (;;) {
+		do {
 			c_n = infos.sibling(base_n ^ u32(c_n));
 			c_p = infos.sibling(base_p ^ u32(c_p));
-
-			if (!(c_n != 0 && c_p != 0)) {
-				break;
-			}
-		}
+		} while (c_n != 0 && c_p != 0);
 
 		return c_p != 0;
 	}
@@ -1062,7 +1058,7 @@ public class Cedar /* implements AutoCloseable */ {
 				// try out this block if the number of children is less than that number.
 				if (blocks.num(idx) >= nc && nc < blocks.reject(idx)) {
 					var e = blocks.head(idx);
-					for (;;) {
+					do {
 						var base = e ^ u32(child[0]);
 
 						var i = 1;
@@ -1078,10 +1074,8 @@ public class Cedar /* implements AutoCloseable */ {
 
 						// we save the next free block's information in `check`
 						e = -array.check(e);
-						if (e == blocks.head(idx)) {
-							break;
-						}
-					}
+
+					} while ((e != blocks.head(idx)));
 				}
 
 				// we broke out of the loop, that means we failed. We save the information in
@@ -1447,15 +1441,11 @@ public class Cedar /* implements AutoCloseable */ {
 
 				infos.child(to, c);
 
-				for (;;) {
+				do {
 					var idx = u64(array.base(to) ^ u32(c));
 					array.check(idx, to);
 					c = infos.sibling(idx);
-
-					if (c == 0) {
-						break;
-					}
-				}
+				} while (c != 0);
 			}
 
 			if (!flag && to_ == (int) from_n) {

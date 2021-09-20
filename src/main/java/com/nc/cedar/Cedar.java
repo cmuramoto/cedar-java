@@ -17,7 +17,6 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.OptionalInt;
@@ -916,7 +915,7 @@ public class Cedar /* implements AutoCloseable */ {
 		}
 	}
 
-	public void build(Collection<Map.Entry<String, Integer>> kv) {
+	public <E extends Map.Entry<String, Integer>> void build(Iterable<E> kv) {
 		for (var e : kv) {
 			update(e.getKey(), e.getValue());
 		}

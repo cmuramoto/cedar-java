@@ -2,6 +2,11 @@ package com.nc.cedar;
 
 import jdk.incubator.foreign.MemorySegment;
 
+/**
+ * Base storage for cedar. Abstract methods are non-performance critical.
+ *
+ * @author cmuramoto
+ */
 abstract class CedarBuffer {
 
 	static final boolean BOUNDS_CHECK = false;
@@ -44,14 +49,14 @@ abstract class CedarBuffer {
 		return byteSize() / unit;
 	}
 
-	void close() {
+	final void close() {
 		var b = buffer;
 		if (b != null && b.isAlive()) {
 			b.close();
 		}
 	}
 
-	void fill(int b) {
+	final void fill(int b) {
 		buffer.fill((byte) b);
 	}
 

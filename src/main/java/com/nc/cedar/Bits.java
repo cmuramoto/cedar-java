@@ -29,6 +29,18 @@ public final class Bits {
 		return U.getByte(s, C_OFF);
 	}
 
+	static int i32(long v) {
+		return (int) v;
+	}
+
+	static int u32(byte v) {
+		return v & 0xFF;
+	}
+
+	static long u64(int n) {
+		return n & 0XFFFFFFFFL;
+	}
+
 	private static byte[] unwrap(String s) {
 		return (byte[]) U.getReference(s, V_OFF);
 	}

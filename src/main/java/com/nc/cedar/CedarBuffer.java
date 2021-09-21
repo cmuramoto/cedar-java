@@ -10,7 +10,6 @@ import static jdk.incubator.foreign.MemoryAccess.setShortAtOffset;
 
 import java.util.Arrays;
 import java.util.Map;
-import java.util.OptionalInt;
 import java.util.stream.LongStream;
 
 import jdk.incubator.foreign.MemorySegment;
@@ -635,19 +634,9 @@ final class Rejects extends CedarBuffer {
  * Instead of allocating a tuple, we pass this state as a parameter to trap return values.
  */
 interface Scratch {
-	long from();
-
 	void from(long v);
-
-	long p();
 
 	void p(long p);
 
-	OptionalInt value();
-
-	default void value(int value) {
-		value(OptionalInt.of(value));
-	}
-
-	void value(OptionalInt value);
+	void value(long value);
 }

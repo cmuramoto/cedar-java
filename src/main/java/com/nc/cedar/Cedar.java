@@ -20,7 +20,6 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.OptionalInt;
 import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.stream.IntStream;
@@ -77,12 +76,12 @@ public class Cedar /* implements AutoCloseable */ {
 			while (i < key.length) {
 				var value = find(key, from, i, i + 1);
 
-				if (value.isPresent()) {
-					if (value == CEDAR_NO_VALUE_OP) {
+				if (value != ABSENT) {
+					if (value == NO_VALUE) {
 						i++;
 						continue;
 					} else {
-						curr = new Match(value.getAsInt(), i, from.v);
+						curr = new Match((int) value, i, from.v);
 						i++;
 						break;
 					}
@@ -99,7 +98,7 @@ public class Cedar /* implements AutoCloseable */ {
 		final Ptr from;
 		long p;
 		long root;
-		OptionalInt value = OptionalInt.empty();
+		long value;
 
 		PrefixPredictIter(byte[] key) {
 			this.key = key;
@@ -108,7 +107,7 @@ public class Cedar /* implements AutoCloseable */ {
 
 		@Override
 		void advance() {
-			if (value == null) {
+			if (value == ABSENT) {
 				return;
 			}
 
@@ -116,7 +115,7 @@ public class Cedar /* implements AutoCloseable */ {
 				// To locate the prefix's position first, if it doesn't exist then that means we
 				// don't have do anything. `from` would serve as the cursor.
 
-				if (key.length == 0 || find(key, from).isPresent()) {
+				if (key.length == 0 || find(key, from) != ABSENT) {
 					this.root = this.from.v;
 
 					begin(this.from.v, this.p, this);
@@ -129,18 +128,8 @@ public class Cedar /* implements AutoCloseable */ {
 		}
 
 		@Override
-		public long from() {
-			return from.v;
-		}
-
-		@Override
 		public void from(long v) {
 			this.from.v = v;
-		}
-
-		@Override
-		public long p() {
-			return p;
 		}
 
 		@Override
@@ -149,28 +138,19 @@ public class Cedar /* implements AutoCloseable */ {
 		}
 
 		void tryAdvance() {
-			if (value.isPresent()) {
-				var result = new Match(value.getAsInt(), (int) p, from());
+			if (value != ABSENT) {
+				var result = new Match((int) value, (int) p, from.v);
 
 				Cedar.this.next(from.v, p, root, this);
 
 				curr = result;
-				if (value.isEmpty()) {
-					value = null;
-				}
 			} else {
 				curr = null;
-				value = null;
 			}
 		}
 
 		@Override
-		public OptionalInt value() {
-			return value;
-		}
-
-		@Override
-		public void value(OptionalInt value) {
+		public void value(long value) {
 			this.value = value;
 		}
 
@@ -200,12 +180,12 @@ public class Cedar /* implements AutoCloseable */ {
 
 					var r = find(text, from, off, off + 1);
 
-					if (r.isPresent()) {
-						if (r == CEDAR_NO_VALUE_OP) {
+					if (r != ABSENT) {
+						if (r == NO_VALUE) {
 							i++;
 							continue;
 						} else {
-							curr = new TextMatch(base, base + i + 1, r.getAsInt());
+							curr = new TextMatch(base, base + i + 1, (int) r);
 							i++;
 							return;
 						}
@@ -226,9 +206,11 @@ public class Cedar /* implements AutoCloseable */ {
 
 	static final int BLOCK_TYPE_FULL = 2;
 
-	static final int CEDAR_NO_VALUE = -1;
+	static final long NO_VALUE = 1L << 32;
 
-	static final OptionalInt CEDAR_NO_VALUE_OP = OptionalInt.of(CEDAR_NO_VALUE);
+	static final long ABSENT = 1L << 33;
+
+	static final long ABSENT_OR_NO_VALUE = NO_VALUE | ABSENT;
 
 	static void close(CedarBuffer c) {
 		if (c != null) {
@@ -383,7 +365,7 @@ public class Cedar /* implements AutoCloseable */ {
 
 			// if no sibling couldn be found from the virtual root, then we are done.
 			if (c == 0) {
-				s.value(OptionalInt.empty());
+				s.value(ABSENT);
 				s.from(from);
 				s.p(p);
 				return;
@@ -460,7 +442,7 @@ public class Cedar /* implements AutoCloseable */ {
 	private void erase(byte[] key) {
 		var from = new Ptr();
 
-		if (find(key, from).isPresent()) {
+		if (find(key, from) != ABSENT) {
 			erase(from.v);
 		}
 	}
@@ -493,11 +475,11 @@ public class Cedar /* implements AutoCloseable */ {
 		erase(utf8(key));
 	}
 
-	OptionalInt find(byte[] key, Ptr from) {
+	long find(byte[] key, Ptr from) {
 		return find(key, from, 0, key.length);
 	}
 
-	OptionalInt find(byte[] key, Ptr from, int start, int end) {
+	long find(byte[] key, Ptr from, int start, int end) {
 		var to = 0L;
 		var pos = 0;
 		end = (end <= 0 || end <= start) ? key.length : end;
@@ -510,7 +492,7 @@ public class Cedar /* implements AutoCloseable */ {
 			to = u64(array.base(v) ^ u32(key[start + pos]));
 			if (array.check(to) != i32(v)) {
 				from.v = v;
-				return OptionalInt.empty();
+				return ABSENT;
 			}
 
 			v = to;
@@ -520,9 +502,9 @@ public class Cedar /* implements AutoCloseable */ {
 		var b = array.base(from.v = v);
 		var check = array.check(b);
 		if (check != i32(v)) {
-			return CEDAR_NO_VALUE_OP;
+			return NO_VALUE;
 		} else {
-			return OptionalInt.of(array.base(b));
+			return array.base(b);
 		}
 	}
 
@@ -632,12 +614,12 @@ public class Cedar /* implements AutoCloseable */ {
 	public Match get(byte[] utf8) {
 		var from = new Ptr();
 
-		var r = find(utf8, from).orElse(CEDAR_NO_VALUE);
+		var r = find(utf8, from);
 
-		if (r == CEDAR_NO_VALUE) {
+		if ((r & ABSENT_OR_NO_VALUE) != 0) {
 			return null;
 		} else {
-			return new Match(r, utf8.length, from.v);
+			return new Match((int) r, utf8.length, from.v);
 		}
 	}
 
@@ -674,7 +656,7 @@ public class Cedar /* implements AutoCloseable */ {
 			begin(from, p + 1, scratch);
 		} else {
 			// no more work since we couldn't find anything.
-			scratch.value(OptionalInt.empty());
+			scratch.value(ABSENT);
 			scratch.from(from);
 			scratch.p(p);
 		}

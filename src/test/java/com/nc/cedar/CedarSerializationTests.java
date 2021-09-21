@@ -2,19 +2,62 @@ package com.nc.cedar;
 
 import static com.nc.cedar.CedarTestSupport.randomAlpha;
 import static com.nc.cedar.CedarTestSupport.toMap;
+import static java.lang.System.nanoTime;
+import static java.lang.System.out;
 import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.locks.LockSupport;
 
 import org.junit.Test;
 
 public class CedarSerializationTests {
 
-	record DeserResult(long size, List<Long> times) {
+	static class State {
+		int loops;
+		int max;
+		int length;
+		boolean copy;
+
+		long store;
+		long size;
+		List<Long> beforeTrips;
+		List<Long> times;
+		List<Long> afterTrips;
+		String[] dict;
+
+		State(int loops, int max, int length, boolean copy) {
+			super();
+			this.loops = loops;
+			this.max = max;
+			this.length = length;
+			this.copy = copy;
+		}
+
+		@Override
+		public String toString() {
+			var stats = beforeTrips.stream().mapToLong(v -> v).summaryStatistics();
+
+			var ab = 1000d * (dict.length / stats.getAverage());
+
+			stats = afterTrips.stream().mapToLong(v -> v).summaryStatistics();
+
+			var af = 1000d * (dict.length / stats.getAverage());
+
+			return String.format("RoundTrip (mode=%s, size=%.2fMB,  keys:%d, load:%s, trips: {before: %s, after: %s}, avg: {before: %.2freads/μs, after: %.2freads/μs})", copy ? "copy" : "mmap", size / (1024 * 1024d), dict.length, times, beforeTrips, afterTrips, ab, af);
+		}
+	}
+
+	private void dump(String[] dict) throws IOException {
+		Files.write(Paths.get("dump.txt"), Arrays.asList(dict), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 	}
 
 	private void run(Cedar cedar, String[] dict) {
@@ -23,39 +66,70 @@ public class CedarSerializationTests {
 		}
 	}
 
-	private DeserResult run(int loops, int max, int length, boolean copy) throws IOException {
+	private void run(State r) throws IOException {
+		var max = r.max;
+		var loops = r.loops;
+		var length = r.length;
 		var rng = ThreadLocalRandom.current();
+		var seen = new HashSet<String>();
 		var dict = new String[max];
-		for (var i = 0; i < max; i++) {
+		for (; seen.size() < max;) {
 			var chars = randomAlpha(rng, length);
-
-			dict[i] = chars;
+			if (!seen.add(chars)) {
+				LockSupport.parkNanos(1);
+			}
 		}
 
-		var key_values = toMap(dict);
+		dict = seen.toArray(dict);
+		seen = null;
+		r.dict = dict;
+
 		var cedar = new Cedar();
-		cedar.build(key_values);
+		cedar.build(dict);
 		var size = cedar.byteSize();
 
-		run(cedar, dict);
+		var btrips = new ArrayList<Long>();
+		var now = nanoTime();
+
+		for (var i = 0; i < loops; i++) {
+			now = nanoTime();
+			run(cedar, dict);
+			btrips.add(nanoTime() - now);
+		}
 
 		var tmp = Files.createTempFile("cedar", "bin");
 
+		now = nanoTime();
 		cedar.serialize(tmp);
+		r.store = nanoTime() - now;
 		cedar.close();
 
 		var times = new ArrayList<Long>();
+		var trips = new ArrayList<Long>();
 
 		for (var i = 0; i < loops; i++) {
-			var now = System.currentTimeMillis();
-			cedar = Cedar.deserialize(tmp, copy);
-			var elapsed = System.currentTimeMillis() - now;
+			now = nanoTime();
+			cedar = Cedar.deserialize(tmp, r.copy);
+			times.add(nanoTime() - now);
+			now = nanoTime();
 			run(cedar, dict);
+			trips.add(nanoTime() - now);
 			cedar.close();
-			times.add(elapsed);
 		}
 
-		return new DeserResult(size, times);
+		r.size = size;
+		r.times = times;
+		r.beforeTrips = btrips;
+		r.afterTrips = trips;
+	}
+
+	void runGuarded(State r) throws IOException {
+		try {
+			run(r);
+		} catch (Exception e) {
+			e.printStackTrace();
+			dump(r.dict);
+		}
 	}
 
 	@Test
@@ -100,22 +174,32 @@ public class CedarSerializationTests {
 
 	@Test
 	public void test_bench_serialization_copy() throws IOException {
-		var res = run(10, 100000, 30, true);
+		var res = new State(5, 100000, 30, true);
+		run(res);
 
-		System.out.printf("Deserialization times (mode=%s,size=%d): %s\n", "copy", res.size, res.times);
+		out.println(res);
 	}
 
 	@Test
 	public void test_bench_serialization_mmap() throws IOException {
-		var res = run(10, 100000, 30, false);
+		var res = new State(5, 100000, 30, false);
 
-		System.out.printf("Deserialization times (mode=%s,size=%d): %s\n", "mmap", res.size, res.times);
+		run(res);
+
+		out.println(res);
 	}
 
 	@Test
 	public void test_bench_serialization_mmap_large() throws IOException {
-		var res = run(5, 1000000, 10, false);
+		try {
+			var res = new State(5, 2000000, 6, false);
 
-		System.out.printf("Deserialization times (mode=%s,size=%d): %s\n", "mmap", res.size, res.times);
+			run(res);
+
+			out.println(res);
+		} catch (Throwable e) {
+			e.printStackTrace();
+			throw e;
+		}
 	}
 }

@@ -1,7 +1,15 @@
 package com.nc.cedar;
 
 import java.nio.charset.Charset;
+import java.util.PrimitiveIterator;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.stream.LongStream;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
+import jdk.incubator.foreign.MemoryAccess;
+import jdk.incubator.foreign.MemorySegment;
 import jdk.internal.misc.Unsafe;
 
 public final class Bits {
@@ -31,6 +39,87 @@ public final class Bits {
 
 	static int i32(long v) {
 		return (int) v;
+	}
+
+	public static LongStream split(MemorySegment contiguous, byte sep) {
+		var itr = new PrimitiveIterator.OfLong() {
+			long pos;
+			boolean ready;
+
+			private void advance() {
+				var p = pos;
+				var c = contiguous;
+				var s = sep;
+
+				if (p < c.byteSize()) {
+					do {
+						if (MemoryAccess.getByteAtOffset(c, p) == s) {
+							break;
+						}
+						p++;
+					} while (p < c.byteSize());
+					pos = p;
+					ready = true;
+				} else {
+					pos = -1;
+					return;
+				}
+			}
+
+			@Override
+			public boolean hasNext() {
+				if (!ready) {
+					advance();
+				}
+				return ready;
+			}
+
+			@Override
+			public long nextLong() {
+				var p = pos;
+
+				if (p < 0 || (ready = !ready)) {
+					throw new IllegalStateException();
+				}
+
+				pos++;
+
+				return p;
+			}
+		};
+
+		return StreamSupport.longStream(Spliterators.spliteratorUnknownSize(itr, Spliterator.ORDERED), false);
+	}
+
+	public static LongStream split(MemorySegment contiguous, char sep) {
+		return split(contiguous, (byte) sep);
+	}
+
+	public static Stream<String> stream(MemorySegment contiguous, byte sep) {
+		var offsets = split(contiguous, sep);
+		var ptr = new Ptr();
+
+		return offsets.mapToObj(curr -> {
+			var prev = ptr.v;
+			var len = curr - prev;
+
+			if (len == 0) {
+				return "";
+			}
+
+			if (len > 0 && len <= Integer.MAX_VALUE) {
+				var chunk = contiguous.asSlice(prev, len).toByteArray();
+				ptr.v = curr + 1;
+
+				return new String(chunk, UTF8);
+			}
+
+			throw new IllegalStateException("Invalid length: " + len);
+		});
+	}
+
+	public static Stream<String> stream(MemorySegment contiguous, char sep) {
+		return stream(contiguous, (byte) sep);
 	}
 
 	static int u32(byte v) {

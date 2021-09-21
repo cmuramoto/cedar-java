@@ -1021,9 +1021,6 @@ public class Cedar /* implements AutoCloseable */ {
 		var pos = 0;
 
 		if (c == 0) {
-			if (pos == child.length) {
-				child = Arrays.copyOf(child, pos + 16);
-			}
 			child[pos++] = c;
 			c = infos.sibling(base ^ u32(c));
 		}
@@ -1039,6 +1036,9 @@ public class Cedar /* implements AutoCloseable */ {
 		}
 
 		if (not_terminal) {
+			if (pos == child.length) {
+				child = Arrays.copyOf(child, pos + 16);
+			}
 			child[pos++] = label;
 		}
 

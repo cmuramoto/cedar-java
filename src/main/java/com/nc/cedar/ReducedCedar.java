@@ -269,7 +269,7 @@ public final class ReducedCedar extends BaseCedar {
 			p += 1;
 		}
 
-		// #[cfg(feature = "reduced-trie")]
+		// reduced-trie
 		if (array.base(from) >= 0) {
 			s.set(from, p, array.base(from));
 			return;
@@ -300,6 +300,7 @@ public final class ReducedCedar extends BaseCedar {
 		}
 	}
 
+	@Override
 	public void build(String... keys) {
 		for (var i = 0; i < keys.length; i++) {
 			update(keys[i], i);
@@ -324,10 +325,10 @@ public final class ReducedCedar extends BaseCedar {
 	}
 
 	private void erase(long from) {
-		// #[cfg(feature = "reduced-trie")]
+		// reduced-trie
 		var e = array.base(from) >= 0 ? i32(from) : array.base_r(from);
 
-		// #[cfg(feature = "reduced-trie")]
+		// reduced-trie
 		from = u64(array.check(e));
 
 		boolean has_sibling;
@@ -370,7 +371,7 @@ public final class ReducedCedar extends BaseCedar {
 		var v = from.v;
 
 		while (pos < span) {
-			// #[cfg(feature = "reduced-trie")]
+			// reduced-trie
 			if (array.base(v) >= 0) {
 				break;
 			}
@@ -387,7 +388,7 @@ public final class ReducedCedar extends BaseCedar {
 
 		from.v = v;
 
-		// #[cfg(feature = "reduced-trie")]
+		// reduced-trie
 		if (array.base(v) >= 0) {
 			if (pos == end) {
 				return array.base(v);
@@ -532,7 +533,7 @@ public final class ReducedCedar extends BaseCedar {
 	void next(long from, long p, long root, Scratch scratch) {
 		var c = (byte) 0;
 
-		// #[cfg(feature = "reduced-trie")]
+		// reduced-trie
 		if (array.base(from) < 0) {
 			c = infos.sibling(array.base_r(from));
 		}
@@ -588,7 +589,7 @@ public final class ReducedCedar extends BaseCedar {
 			}
 		}
 
-		// #[cfg(feature = "reduced-trie")]
+		// reduced-trie
 		array.base(e, CEDAR_VALUE_LIMIT);
 		array.check(e, from);
 		if (base < 0) {
@@ -640,7 +641,7 @@ public final class ReducedCedar extends BaseCedar {
 			infos.child(from, label_n);
 		}
 
-		// #[cfg(feature = "reduced-trie")]
+		// reduced-trie
 		array.base(from, -base - 1);
 
 		// the actual work for relocating the chilren
@@ -660,7 +661,7 @@ public final class ReducedCedar extends BaseCedar {
 
 			array.base(to, array.base(to_));
 
-			// #[cfg(feature = "reduced-trie")]
+			// reduced-trie
 			var condition = array.base(to) < 0 && children[i] != 0;
 
 			if (condition) {
@@ -684,7 +685,7 @@ public final class ReducedCedar extends BaseCedar {
 				push_sibling(from_n, to_pn ^ u32(label_n), label_n, true);
 				infos.child(to_, (byte) 0);
 
-				// #[cfg(feature = "reduced-trie")]
+				// reduced-trie
 				array.base(to_, CEDAR_VALUE_LIMIT);
 
 				array.check(to_, (int) from_n);
@@ -787,7 +788,7 @@ public final class ReducedCedar extends BaseCedar {
 		}
 
 		while (pos < key.length) {
-			// #[cfg(feature = "reduced-trie")]
+			// reduced-trie
 			var val_ = array.base(from);
 			if (val_ >= 0 && val_ != CEDAR_VALUE_LIMIT) {
 				var to = follow(from, (byte) 0);
@@ -798,10 +799,10 @@ public final class ReducedCedar extends BaseCedar {
 			pos++;
 		}
 
-		// #[cfg(feature = "reduced-trie")]
+		// reduced-trie
 		var to = array.base(from) >= 0 ? i32(from) : follow(from, (byte) 0);
 
-		// #[cfg(feature = "reduced-trie")]
+		// reduced-trie
 		if (array.base(to) == CEDAR_VALUE_LIMIT) {
 			array.base(to, 0);
 		}

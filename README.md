@@ -1,5 +1,6 @@
 # cedar-java
-A java backport of rust's [cedarwood](https://github.com/MnO2/cedarwood), an eficient updatable double array trie, with some additions from the original [cedar](http://www.tkl.iis.u-tokyo.ac.jp/~ynaga/cedar/).
+
+A Java backport of Rust's [cedarwood](https://github.com/MnO2/cedarwood), an efficiently-updatable double-array trie, with some additions from the original [cedar](http://www.tkl.iis.u-tokyo.ac.jp/~ynaga/cedar/) and (de-)serialization support.
 
 This trie works like a SortedMap<String,int> and it's lookups run in O(k), where k is the length of the key.
 

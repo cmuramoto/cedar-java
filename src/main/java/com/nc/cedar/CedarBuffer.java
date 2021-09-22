@@ -476,8 +476,12 @@ final class Nodes extends CedarBuffer {
 		setIntAtOffset(buffer, safeOffset(ix), v);
 	}
 
+	int base_r(int ix) {
+		return base_r(u64(ix));
+	}
+
 	int base_r(long ix) {
-		return -getIntAtOffset(buffer, safeOffset(ix)) + 1;
+		return -(getIntAtOffset(buffer, safeOffset(ix)) + 1);
 	}
 
 	int check(int ix) {
@@ -634,9 +638,5 @@ final class Rejects extends CedarBuffer {
  * Instead of allocating a tuple, we pass this state as a parameter to trap return values.
  */
 interface Scratch {
-	void from(long v);
-
-	void p(long p);
-
-	void value(long value);
+	void set(long from, long p, long value);
 }

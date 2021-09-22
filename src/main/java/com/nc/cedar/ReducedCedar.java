@@ -22,7 +22,7 @@ import java.util.stream.Stream;
 
 import jdk.incubator.foreign.MemorySegment;
 
-public final class Cedar extends BaseCedar {
+public final class ReducedCedar extends BaseCedar {
 
 	final class PrefixIter extends Itr<Match> {
 
@@ -102,14 +102,13 @@ public final class Cedar extends BaseCedar {
 			if (value != ABSENT) {
 				var result = new Match((int) value, (int) p, from.v);
 
-				Cedar.this.next(from.v, p, root, this);
+				ReducedCedar.this.next(from.v, p, root, this);
 
 				curr = result;
 			} else {
 				curr = null;
 			}
 		}
-
 	}
 
 	final class ScanItr extends Itr<TextMatch> {
@@ -156,7 +155,7 @@ public final class Cedar extends BaseCedar {
 		}
 	}
 
-	public static Cedar deserialize(MemorySegment src, boolean copy) {
+	public static ReducedCedar deserialize(MemorySegment src, boolean copy) {
 		var off = 0;
 		var ordered = getByteAtOffset(src, off) == 1;
 		var blocks_head_full = getIntAtOffset(src, off += 1);
@@ -204,7 +203,7 @@ public final class Cedar extends BaseCedar {
 			cb.buffer = ms;
 		}
 
-		var c = new Cedar(array, infos, blocks, rejects, ordered);
+		var c = new ReducedCedar(array, infos, blocks, rejects, ordered);
 		c.blocks_head_full = blocks_head_full;
 		c.blocks_head_open = blocks_head_open;
 		c.blocks_head_closed = blocks_head_closed;
@@ -215,7 +214,7 @@ public final class Cedar extends BaseCedar {
 		return c;
 	}
 
-	public static Cedar deserialize(Path src, boolean copy) {
+	public static ReducedCedar deserialize(Path src, boolean copy) {
 		MemorySegment ms = null;
 		try {
 			ms = MemorySegment.mapFile(src, 0, Files.size(src), MapMode.READ_WRITE);
@@ -229,26 +228,27 @@ public final class Cedar extends BaseCedar {
 		}
 	}
 
-	public Cedar() {
+	public ReducedCedar() {
 		this(true);
 	}
 
-	public Cedar(boolean ordered) {
-		this(Nodes.initial(), NodeInfos.initial(), Blocks.initial(), Rejects.initial(), ordered);
+	public ReducedCedar(boolean ordered) {
+		this(Nodes.initial_r(), NodeInfos.initial(), Blocks.initial(), Rejects.initial(), ordered);
 
 		capacity = 256;
 		size = 256;
+		ordered = true;
 		max_trial = 1;
 	}
 
-	private Cedar(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, boolean ordered) {
+	private ReducedCedar(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, boolean ordered) {
 		super(array, infos, blocks, reject, ordered);
 	}
 
 	private void begin(long from, long p, Scratch s) {
 		var array = this.array;
 		var infos = this.infos;
-		var base = array.base(from);
+		var base = array.base_r(from);
 
 		var c = infos.child(from);
 
@@ -264,13 +264,19 @@ public final class Cedar extends BaseCedar {
 
 		// recursively traversing down to look for the first leaf.
 		while (c != 0) {
-			from = u64(array.base(from) ^ u32(c));
+			from = u64(array.base_r(from) ^ u32(c));
 			c = infos.child(from);
 			p += 1;
 		}
 
+		// #[cfg(feature = "reduced-trie")]
+		if (array.base(from) >= 0) {
+			s.set(from, p, array.base(from));
+			return;
+		}
+
 		// To return the value of the leaf.
-		var v = array.base(array.base(from) ^ u32(c));
+		var v = array.base(array.base_r(from) ^ u32(c));
 		s.set(from, p, v);
 	}
 
@@ -309,7 +315,7 @@ public final class Cedar extends BaseCedar {
 		return common_prefix_iter(utf8(key));
 	}
 
-	public void erase(byte[] key) {
+	private void erase(byte[] key) {
 		var from = new Ptr();
 
 		if (find(key, from) != ABSENT) {
@@ -318,11 +324,15 @@ public final class Cedar extends BaseCedar {
 	}
 
 	private void erase(long from) {
-		var e = array.base(from);
-		var has_sibling = false;
+		// #[cfg(feature = "reduced-trie")]
+		var e = array.base(from) >= 0 ? i32(from) : array.base_r(from);
+
+		// #[cfg(feature = "reduced-trie")]
+		from = u64(array.check(e));
+
+		boolean has_sibling;
 		do {
-			// var n = array.at(v);
-			var base = array.base(from);
+			var base = array.base_r(from);
 			has_sibling = infos.sibling(base ^ u32(infos.child(from))) != 0;
 
 			// if the node has siblings, then remove `e` from the sibling.
@@ -360,7 +370,12 @@ public final class Cedar extends BaseCedar {
 		var v = from.v;
 
 		while (pos < span) {
-			to = u64(array.base(v) ^ u32(key[start + pos]));
+			// #[cfg(feature = "reduced-trie")]
+			if (array.base(v) >= 0) {
+				break;
+			}
+
+			to = u64(array.base_r(v) ^ u32(key[start + pos]));
 			if (array.check(to) != i32(v)) {
 				from.v = v;
 				return ABSENT;
@@ -370,7 +385,18 @@ public final class Cedar extends BaseCedar {
 			pos++;
 		}
 
-		var b = array.base(from.v = v);
+		from.v = v;
+
+		// #[cfg(feature = "reduced-trie")]
+		if (array.base(v) >= 0) {
+			if (pos == end) {
+				return array.base(v);
+			} else {
+				return ABSENT;
+			}
+		}
+
+		var b = array.base_r(v);
 		var check = array.check(b);
 		if (check != i32(v)) {
 			return NO_VALUE;
@@ -458,7 +484,7 @@ public final class Cedar extends BaseCedar {
 	}
 
 	private int follow(long from, byte label) {
-		var base = array.base(from);
+		var base = array.base_r(from);
 
 		var to = 0;
 		var ul = u32(label);
@@ -504,7 +530,12 @@ public final class Cedar extends BaseCedar {
 	}
 
 	void next(long from, long p, long root, Scratch scratch) {
-		var c = infos.sibling(array.base(from));
+		var c = (byte) 0;
+
+		// #[cfg(feature = "reduced-trie")]
+		if (array.base(from) < 0) {
+			c = infos.sibling(array.base_r(from));
+		}
 
 		// traversing up until there is a sibling or it has reached the root.
 		while (c == 0 && from != root) {
@@ -515,7 +546,7 @@ public final class Cedar extends BaseCedar {
 
 		if (c != 0) {
 			// it has a sibling so we leverage on `begin` to traverse the subtree down again.
-			from = u64(array.base(from) ^ u32(c));
+			from = u64(array.base_r(from) ^ u32(c));
 			begin(from, p + 1, scratch);
 		} else {
 			// no more work since we couldn't find anything.
@@ -548,6 +579,7 @@ public final class Cedar extends BaseCedar {
 			array.base(-ncheck, nbase);
 
 			if (e == blocks.head(idx)) {
+				// blocks.head(idx, -n.check);
 				blocks.head(idx, -ncheck);
 			}
 
@@ -556,15 +588,13 @@ public final class Cedar extends BaseCedar {
 			}
 		}
 
-		if (label != 0) {
-			array.base(e, -1);
-		} else {
-			array.base(e, 0);
-		}
+		// #[cfg(feature = "reduced-trie")]
+		array.base(e, CEDAR_VALUE_LIMIT);
 		array.check(e, from);
 		if (base < 0) {
-			array.base(from, e ^ u32(label));
+			array.base(from, -(e ^ i32(label)) - 1);
 		}
+
 		return e;
 	}
 
@@ -582,7 +612,7 @@ public final class Cedar extends BaseCedar {
 
 		// the `base` and `from` for the conflicting one.
 		var from_p = array.check(to_pn);
-		var base_p = array.base(from_p);
+		var base_p = array.base_r(from_p);
 
 		// whether to replace siblings of newly added
 		var flag = consult(base_n, base_p, infos.child(from_n), infos.child(from_p));
@@ -610,7 +640,8 @@ public final class Cedar extends BaseCedar {
 			infos.child(from, label_n);
 		}
 
-		array.base(from, base);
+		// #[cfg(feature = "reduced-trie")]
+		array.base(from, -base - 1);
 
 		// the actual work for relocating the chilren
 		for (var i = 0; i < children.length; i++) {
@@ -629,7 +660,8 @@ public final class Cedar extends BaseCedar {
 
 			array.base(to, array.base(to_));
 
-			var condition = array.base(to) > 0 && children[i] != 0;
+			// #[cfg(feature = "reduced-trie")]
+			var condition = array.base(to) < 0 && children[i] != 0;
 
 			if (condition) {
 				var c = infos.child(to_);
@@ -637,7 +669,7 @@ public final class Cedar extends BaseCedar {
 				infos.child(to, c);
 
 				do {
-					var idx = u64(array.base(to) ^ u32(c));
+					var idx = u64(array.base_r(to) ^ u32(c));
 					array.check(idx, to);
 					c = infos.sibling(idx);
 				} while (c != 0);
@@ -652,11 +684,8 @@ public final class Cedar extends BaseCedar {
 				push_sibling(from_n, to_pn ^ u32(label_n), label_n, true);
 				infos.child(to_, (byte) 0);
 
-				if (label_n != 0) {
-					array.base(to_, -1);
-				} else {
-					array.base(to_, 0);
-				}
+				// #[cfg(feature = "reduced-trie")]
+				array.base(to_, CEDAR_VALUE_LIMIT);
 
 				array.check(to_, (int) from_n);
 			} else {
@@ -741,7 +770,7 @@ public final class Cedar extends BaseCedar {
 		var array = this.array;
 		while (len-- > 0) {
 			var from = u64(array.check(to));
-			scratch[len] = (byte) ((array.base(from) ^ to) & 0xFF);
+			scratch[len] = (byte) ((array.base_r(from) ^ to) & 0xFF);
 			to = from;
 		}
 
@@ -758,11 +787,24 @@ public final class Cedar extends BaseCedar {
 		}
 
 		while (pos < key.length) {
+			// #[cfg(feature = "reduced-trie")]
+			var val_ = array.base(from);
+			if (val_ >= 0 && val_ != CEDAR_VALUE_LIMIT) {
+				var to = follow(from, (byte) 0);
+				array.base(to, val_);
+			}
+
 			from = follow(from, key[pos]);
 			pos++;
 		}
 
-		var to = follow(from, (byte) 0);
+		// #[cfg(feature = "reduced-trie")]
+		var to = array.base(from) >= 0 ? i32(from) : follow(from, (byte) 0);
+
+		// #[cfg(feature = "reduced-trie")]
+		if (array.base(to) == CEDAR_VALUE_LIMIT) {
+			array.base(to, 0);
+		}
 
 		return array.getAndSetBase(to, value);
 	}

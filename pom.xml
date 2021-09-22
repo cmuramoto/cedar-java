@@ -95,7 +95,7 @@
 					<artifactId>maven-surefire-plugin</artifactId>
 					<version>${plugins.surefire.version}</version>
 					<configuration>
-						<argLine>--enable-preview --add-modules jdk.incubator.foreign --add-opens java.base/jdk.internal.misc=ALL-UNNAMED</argLine>
+						<argLine>--enable-preview --add-modules jdk.incubator.foreign --add-opens java.base/jdk.internal.misc=ALL-UNNAMED -Xmx1g</argLine>
 					</configuration>
 				</plugin>
 			</plugins>

@@ -8,6 +8,7 @@ import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
@@ -19,13 +20,14 @@ import java.util.concurrent.locks.LockSupport;
 
 import org.junit.Test;
 
-public class CedarSerializationTests {
+public class CedarSerializationTests extends BaseCedarTests {
 
 	static class State {
 		int loops;
 		int max;
 		int length;
 		boolean copy;
+		boolean reduced;
 
 		long store;
 		long size;
@@ -34,7 +36,7 @@ public class CedarSerializationTests {
 		List<Long> afterTrips;
 		String[] dict;
 
-		State(int loops, int max, int length, boolean copy) {
+		State(int loops, int max, int length, boolean copy, boolean reduced) {
 			super();
 			this.loops = loops;
 			this.max = max;
@@ -52,15 +54,26 @@ public class CedarSerializationTests {
 
 			var af = 1000d * (dict.length / stats.getAverage());
 
-			return String.format("RoundTrip (mode=%s, size=%.2fMB,  keys:%d, load:%s, trips: {before: %s, after: %s}, avg: {before: %.2freads/μs, after: %.2freads/μs})", copy ? "copy" : "mmap", size / (1024 * 1024d), dict.length, times, beforeTrips, afterTrips, ab, af);
+			return String.format("RoundTrip (mode=%s, size=%.2fMB, reduced:%s, keys:%d, load:%s, trips: {before: %s, after: %s}, avg: {before: %.2freads/μs, after: %.2freads/μs})", copy ? "copy" : "mmap", size / (1024 * 1024d), reduced, dict.length, times, beforeTrips, afterTrips, ab, af);
 		}
+	}
+
+	private BaseCedar deserialize(Path tmp, boolean copy) {
+		return reduced ? ReducedCedar.deserialize(tmp, copy) : Cedar.deserialize(tmp, copy);
 	}
 
 	private void dump(String[] dict) throws IOException {
 		Files.write(Paths.get("dump.txt"), Arrays.asList(dict), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 	}
 
+	// specialized type to avoid virtual calls
 	private void run(Cedar cedar, String[] dict) {
+		for (var i = 0; i < dict.length; i++) {
+			assertEquals(i, cedar.get(dict[i]).value());
+		}
+	}
+
+	private void run(ReducedCedar cedar, String[] dict) {
 		for (var i = 0; i < dict.length; i++) {
 			assertEquals(i, cedar.get(dict[i]).value());
 		}
@@ -84,16 +97,20 @@ public class CedarSerializationTests {
 		seen = null;
 		r.dict = dict;
 
-		var cedar = new Cedar();
+		var cedar = instantiate();
 		cedar.build(dict);
-		var size = cedar.byteSize();
+		var size = cedar.imageSize();
 
 		var btrips = new ArrayList<Long>();
 		var now = nanoTime();
 
 		for (var i = 0; i < loops; i++) {
 			now = nanoTime();
-			run(cedar, dict);
+			if (reduced) {
+				run((ReducedCedar) cedar, dict);
+			} else {
+				run((Cedar) cedar, dict);
+			}
 			btrips.add(nanoTime() - now);
 		}
 
@@ -109,10 +126,14 @@ public class CedarSerializationTests {
 
 		for (var i = 0; i < loops; i++) {
 			now = nanoTime();
-			cedar = Cedar.deserialize(tmp, r.copy);
+			cedar = deserialize(tmp, r.copy);
 			times.add(nanoTime() - now);
 			now = nanoTime();
-			run(cedar, dict);
+			if (reduced) {
+				run((ReducedCedar) cedar, dict);
+			} else {
+				run((Cedar) cedar, dict);
+			}
 			trips.add(nanoTime() - now);
 			cedar.close();
 		}
@@ -144,7 +165,7 @@ public class CedarSerializationTests {
 		}
 
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = new ReducedCedar();
 		cedar.build(key_values);
 
 		run(cedar, dict);
@@ -154,27 +175,27 @@ public class CedarSerializationTests {
 		cedar.serialize(tmp);
 		cedar.close();
 
-		cedar = Cedar.deserialize(tmp, true);
+		cedar = ReducedCedar.deserialize(tmp, true);
 		run(cedar, dict);
 		cedar.close();
 
-		cedar = Cedar.deserialize(tmp, false);
+		cedar = ReducedCedar.deserialize(tmp, false);
 		run(cedar, dict);
 
 		// re-serialize mmaped
 		cedar.serialize(tmp);
 
-		cedar = Cedar.deserialize(tmp, true);
+		cedar = ReducedCedar.deserialize(tmp, true);
 		run(cedar, dict);
 		cedar.close();
 
-		cedar = Cedar.deserialize(tmp, false);
+		cedar = ReducedCedar.deserialize(tmp, false);
 		run(cedar, dict);
 	}
 
 	@Test
 	public void test_bench_serialization_copy() throws IOException {
-		var res = new State(5, 100000, 30, true);
+		var res = new State(5, 100000, 30, true, reduced);
 		run(res);
 
 		out.println(res);
@@ -182,7 +203,7 @@ public class CedarSerializationTests {
 
 	@Test
 	public void test_bench_serialization_mmap() throws IOException {
-		var res = new State(5, 100000, 30, false);
+		var res = new State(5, 100000, 30, false, reduced);
 
 		run(res);
 
@@ -192,7 +213,7 @@ public class CedarSerializationTests {
 	@Test
 	public void test_bench_serialization_mmap_large() throws IOException {
 		try {
-			var res = new State(5, 2000000, 6, false);
+			var res = new State(2, 2000000, 6, false, reduced);
 
 			run(res);
 

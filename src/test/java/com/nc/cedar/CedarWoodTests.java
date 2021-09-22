@@ -22,14 +22,17 @@ import org.junit.runners.MethodSorters;
  * @author cmuramoto
  */
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
-public class CedarWoodTests {
+public class CedarWoodTests extends BaseCedarTests {
 
 	@Test
 	public void test_common_prefix_iter() {
+		unsupportedInReduced();
+
 		var dict = vec("a", "ab", "abc", "アルゴリズム", "データ", "構造", "网", "网球", "网球拍", "中", "中华", "中华人民", "中华人民共和国");
 
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
+
 		cedar.build(key_values);
 
 		var result = values(cedar.common_prefix_iter("abcdefg"));
@@ -50,7 +53,7 @@ public class CedarWoodTests {
 	public void test_common_prefix_predict() {
 		var dict = vec("a", "ab", "abc", "abcdef");
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
 		cedar.build(key_values);
 
 		var result = cedar.predict("a").mapToInt(Match::value).toArray();
@@ -62,6 +65,8 @@ public class CedarWoodTests {
 
 	@Test
 	public void test_common_prefix_search() {
+		unsupportedInReduced();
+
 		var dict = vec("a", //
 				"ab", //
 				"abc", //
@@ -76,7 +81,12 @@ public class CedarWoodTests {
 				"中华人民", //
 				"中华人民共和国");
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
+
+		if (cedar.isReduced()) {
+			return;
+		}
+
 		cedar.build(key_values);
 
 		var result = cedar.withCommonPrefix("abcdefg").mapToInt(Match::value).toArray();
@@ -96,9 +106,16 @@ public class CedarWoodTests {
 
 	@Test
 	public void test_duplication() {
+		unsupportedInReduced();
+
+		var cedar = instantiate();
+
+		if (cedar.isReduced()) {
+			return;
+		}
+
 		var dict = vec("些许端", "些須", "些须", "亜", "亝", "亞", "亞", "亞丁", "亞丁港");
 		var key_values = tuples(dict);
-		var cedar = new Cedar();
 		cedar.build(key_values);
 
 		assertEquals(6, cedar.get("亞").value());
@@ -111,7 +128,7 @@ public class CedarWoodTests {
 	public void test_erase() {
 		var dict = vec("a", "ab", "abc");
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
 		cedar.build(key_values);
 
 		assertEquals(0, cedar.get("a").value());
@@ -138,7 +155,7 @@ public class CedarWoodTests {
 	public void test_exact_match_search() {
 		var dict = vec("a", "ab", "abc");
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
 		cedar.build(key_values);
 
 		var result = cedar.get("abc");
@@ -149,7 +166,7 @@ public class CedarWoodTests {
 	public void test_insert_and_delete() {
 		var dict = vec("a");
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
 		cedar.build(key_values);
 
 		var result = cedar.get("a");
@@ -190,7 +207,7 @@ public class CedarWoodTests {
 		}
 
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
 		cedar.build(key_values);
 
 		for (var i = 0; i < dict.size(); i++) {
@@ -213,7 +230,7 @@ public class CedarWoodTests {
 		}
 
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
 		cedar.build(key_values);
 
 		for (var i = 0; i < max; i++) {
@@ -234,7 +251,7 @@ public class CedarWoodTests {
 		}
 
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
 		cedar.build(key_values);
 
 		for (var i = 0; i < max; i++) {
@@ -245,10 +262,17 @@ public class CedarWoodTests {
 
 	@Test
 	public void test_unicode_grapheme_cluster() {
+		unsupportedInReduced();
+
 		var dict = vec("a", "abc", "abcde\u0301");
 
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
+
+		if (cedar.isReduced()) {
+			return;
+		}
+
 		cedar.build(key_values);
 
 		var result = cedar.withCommonPrefix("abcde\u0301\u1100\u1161\uAC00").mapToInt(Match::value).toArray();
@@ -257,10 +281,11 @@ public class CedarWoodTests {
 
 	@Test
 	public void test_unicode_han_sip() {
+		unsupportedInReduced();
 		var dict = vec("讥䶯䶰", "讥䶯䶰䶱䶲", "讥䶯䶰䶱䶲䶳䶴䶵𦡦");
 
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
 		cedar.build(key_values);
 
 		var result = cedar.withCommonPrefix("讥䶯䶰䶱䶲䶳䶴䶵𦡦").mapToInt(Match::value).toArray();
@@ -271,7 +296,7 @@ public class CedarWoodTests {
 	public void test_update() {
 		var dict = vec("a", "ab", "abc");
 		var key_values = toMap(dict);
-		var cedar = new Cedar();
+		var cedar = instantiate();
 		cedar.build(key_values);
 
 		cedar.update("abcd", 3);
@@ -284,7 +309,7 @@ public class CedarWoodTests {
 
 		dict = vec("a", "ab", "abc");
 		key_values = toMap(dict);
-		cedar = new Cedar();
+		cedar = instantiate();
 		cedar.build(key_values);
 		cedar.update("bachelor", 1);
 		cedar.update("jar", 2);
@@ -299,9 +324,10 @@ public class CedarWoodTests {
 
 		dict = vec("a", "ab", "abc");
 		key_values = toMap(dict);
-		cedar = new Cedar();
+		cedar = instantiate();
 		cedar.build(key_values);
 
+		unsupportedInReduced();
 		cedar.update("中", 1);
 		cedar.update("中华", 2);
 		cedar.update("中华人民", 3);

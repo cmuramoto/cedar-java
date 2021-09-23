@@ -1,5 +1,8 @@
 package com.nc.cedar;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles.Lookup;
+import java.lang.invoke.MethodType;
 import java.nio.charset.Charset;
 import java.util.PrimitiveIterator;
 import java.util.Spliterator;
@@ -19,6 +22,7 @@ public final class Bits {
 	static final long C_OFF;
 	static final long V_OFF;
 	static final byte[] EMPTY;
+	static final MethodHandle NO_COPY;
 
 	static {
 		try {
@@ -28,6 +32,7 @@ public final class Bits {
 			C_OFF = U.objectFieldOffset(String.class, "coder");
 			V_OFF = U.objectFieldOffset(String.class, "value");
 			EMPTY = unwrap("");
+			NO_COPY = trusted().findConstructor(String.class, MethodType.methodType(void.class, byte[].class, byte.class));
 		} catch (Throwable e) {
 			throw new ExceptionInInitializerError(e);
 		}
@@ -39,6 +44,22 @@ public final class Bits {
 
 	static int i32(long v) {
 		return (int) v;
+	}
+
+	public static long maxDirectMemory() {
+		return jdk.internal.misc.VM.maxDirectMemory();
+	}
+
+	public static String newAscii(byte[] chunk) {
+		return newString(chunk, (byte) 0);
+	}
+
+	public static String newString(byte[] chunk, byte coder) {
+		try {
+			return (String) NO_COPY.invoke(chunk, coder);
+		} catch (Throwable e) {
+			throw new InternalError(e);
+		}
 	}
 
 	public static LongStream split(MemorySegment contiguous, byte sep) {
@@ -122,6 +143,17 @@ public final class Bits {
 		return stream(contiguous, (byte) sep);
 	}
 
+	private static Lookup trusted() {
+		try {
+			var f = java.lang.invoke.MethodHandles.Lookup.class.getDeclaredField("IMPL_LOOKUP");
+
+			// Unsupported in native image (use reflection)
+			return (Lookup) U.getReference(U.staticFieldBase(f), U.staticFieldOffset(f));
+		} catch (Throwable e) {
+			throw new ExceptionInInitializerError(e);
+		}
+	}
+
 	static int u32(byte v) {
 		return v & 0xFF;
 	}
@@ -145,5 +177,4 @@ public final class Bits {
 		}
 		return rv;
 	}
-
 }

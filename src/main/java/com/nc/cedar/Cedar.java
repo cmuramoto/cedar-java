@@ -5,14 +5,7 @@ import static com.nc.cedar.Bits.i32;
 import static com.nc.cedar.Bits.u32;
 import static com.nc.cedar.Bits.u64;
 import static com.nc.cedar.Bits.utf8;
-import static jdk.incubator.foreign.MemoryAccess.getByteAtOffset;
-import static jdk.incubator.foreign.MemoryAccess.getIntAtOffset;
-import static jdk.incubator.foreign.MemoryAccess.getLongAtOffset;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.channels.FileChannel.MapMode;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -157,76 +150,11 @@ public final class Cedar extends BaseCedar {
 	}
 
 	public static Cedar deserialize(MemorySegment src, boolean copy) {
-		var off = 0;
-		var ordered = getByteAtOffset(src, off) == 1;
-		var blocks_head_full = getIntAtOffset(src, off += 1);
-		var blocks_head_closed = getIntAtOffset(src, off += 4);
-		var blocks_head_open = getIntAtOffset(src, off += 4);
-		var max_trial = getIntAtOffset(src, off += 4);
-		var capacity = getLongAtOffset(src, off += 4);
-		var size = getLongAtOffset(src, off += 8);
-
-		var array = new Nodes();
-		array.pos = getLongAtOffset(src, off += 8);
-
-		var infos = new NodeInfos();
-		infos.pos = getLongAtOffset(src, off += 8);
-
-		var blocks = new Blocks();
-		blocks.pos = getLongAtOffset(src, off += 8);
-
-		var rejects = new Rejects();
-		rejects.pos = getLongAtOffset(src, off += 8);
-
-		var lengths = new long[]{ //
-				getLongAtOffset(src, off += 8), //
-				getLongAtOffset(src, off += 8), //
-				getLongAtOffset(src, off += 8), //
-				getLongAtOffset(src, off += 8) //
-		};
-
-		var slices = Map.of( //
-				array, src.asSlice(off += 8, lengths[0]), //
-				infos, src.asSlice(off += lengths[0], lengths[1]), //
-				blocks, src.asSlice(off += lengths[1], lengths[2]), //
-				rejects, src.asSlice(off += lengths[2], lengths[3])//
-		);
-
-		for (var e : slices.entrySet()) {
-			var cb = e.getKey();
-			var ms = e.getValue();
-
-			if (copy) {
-				var seg = MemorySegment.allocateNative(ms.byteSize(), cb.alignment());
-				seg.copyFrom(ms);
-				ms = seg;
-			}
-			cb.buffer = ms;
-		}
-
-		var c = new Cedar(array, infos, blocks, rejects, ordered);
-		c.blocks_head_full = blocks_head_full;
-		c.blocks_head_open = blocks_head_open;
-		c.blocks_head_closed = blocks_head_closed;
-		c.max_trial = max_trial;
-		c.capacity = capacity;
-		c.size = size;
-
-		return c;
+		return BaseCedar.deserialize(Cedar::new, src, copy);
 	}
 
 	public static Cedar deserialize(Path src, boolean copy) {
-		MemorySegment ms = null;
-		try {
-			ms = MemorySegment.mapFile(src, 0, Files.size(src), MapMode.READ_WRITE);
-			return deserialize(ms, copy);
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
-		} finally {
-			if (ms != null && copy) {
-				ms.close();
-			}
-		}
+		return BaseCedar.deserialize(Cedar::new, src, copy);
 	}
 
 	public Cedar() {
@@ -294,6 +222,7 @@ public final class Cedar extends BaseCedar {
 		}
 	}
 
+	@Override
 	public void build(String... keys) {
 		for (var i = 0; i < keys.length; i++) {
 			update(keys[i], i);
@@ -309,12 +238,15 @@ public final class Cedar extends BaseCedar {
 		return common_prefix_iter(utf8(key));
 	}
 
-	public void erase(byte[] key) {
+	public long erase(byte[] key) {
 		var from = new Ptr();
+		var r = find(key, from);
 
-		if (find(key, from) != ABSENT) {
+		if ((r & ABSENT_OR_NO_VALUE) == 0) {
 			erase(from.v);
 		}
+
+		return r;
 	}
 
 	private void erase(long from) {
@@ -342,8 +274,34 @@ public final class Cedar extends BaseCedar {
 	}
 
 	@Override
-	public void erase(String key) {
-		erase(utf8(key));
+	public long erase(String key) {
+		return erase(utf8(key));
+	}
+
+	public long find(byte[] key) {
+		var from = 0L;
+		var to = 0L;
+		var pos = 0;
+		var array = this.array;
+		// hoist in local, then perform a single heap write post-loop
+
+		while (pos < key.length) {
+			to = u64(array.base(from) ^ u32(key[pos]));
+			if (array.check(to) != i32(from)) {
+				return ABSENT;
+			}
+
+			from = to;
+			pos++;
+		}
+
+		var b = array.base(from);
+		var check = array.check(b);
+		if (check != i32(from)) {
+			return NO_VALUE;
+		} else {
+			return array.base(b);
+		}
 	}
 
 	long find(byte[] key, Ptr from) {
@@ -377,6 +335,11 @@ public final class Cedar extends BaseCedar {
 		} else {
 			return array.base(b);
 		}
+	}
+
+	@Override
+	public long find(String s) {
+		return find(utf8(s));
 	}
 
 	private int find_place() {

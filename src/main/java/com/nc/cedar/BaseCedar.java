@@ -3,6 +3,9 @@ package com.nc.cedar;
 import static com.nc.cedar.Bits.i32;
 import static com.nc.cedar.Bits.u32;
 import static com.nc.cedar.Bits.u64;
+import static jdk.incubator.foreign.MemoryAccess.getByteAtOffset;
+import static jdk.incubator.foreign.MemoryAccess.getIntAtOffset;
+import static jdk.incubator.foreign.MemoryAccess.getLongAtOffset;
 import static jdk.incubator.foreign.MemoryAccess.setByteAtOffset;
 import static jdk.incubator.foreign.MemoryAccess.setIntAtOffset;
 import static jdk.incubator.foreign.MemoryAccess.setLongAtOffset;
@@ -10,22 +13,39 @@ import static jdk.incubator.foreign.MemoryAccess.setLongAtOffset;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel.MapMode;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.stream.Stream;
 
 import jdk.incubator.foreign.MemorySegment;
 
+/**
+ * Common structure and methods shared by {@link Cedar} and {@link ReducedCedar}. <br>
+ * There's lots of code duplication in some methods/iterators in the subclasses due to the fact that
+ * some specialized call sites, e.g., {@link Nodes#base(int)} and {@link Nodes#base_r(int)} run in
+ * tight loops and we want to avoid virtual calls/branching as much as possible.
+ *
+ * @author cmuramoto
+ */
 @SuppressWarnings("preview")
 public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
+
+	interface Factory<T extends BaseCedar> {
+		T allocate(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, boolean ordered);
+	}
 
 	static final int BLOCK_TYPE_CLOSED = 0;
 	static final int BLOCK_TYPE_OPEN = 1;
 	static final int BLOCK_TYPE_FULL = 2;
-	static final int CEDAR_VALUE_LIMIT = Integer.MAX_VALUE - 1;
-	static final long NO_VALUE = 1L << 32;
-	static final long ABSENT = 1L << 33;
+	static final int VALUE_LIMIT = Integer.MAX_VALUE - 1;
+	public static final int NO_VALUE_I32 = -1;
+	public static final long NO_VALUE_U64 = NO_VALUE_I32 & 0xFFFFFFFFL;
+	public static final long NO_VALUE = 1L << 31;
+	public static final long ABSENT = 1L << 32;
+
 	static final long ABSENT_OR_NO_VALUE = NO_VALUE | ABSENT;
 
 	static void close(CedarBuffer c) {
@@ -34,17 +54,96 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		}
 	}
 
+	static <T extends BaseCedar> T deserialize(Factory<T> factory, MemorySegment src, boolean copy) {
+		var off = 0L;
+		var ordered = getByteAtOffset(src, off) == 1;
+		var blocks_head_full = getIntAtOffset(src, off += 1);
+		var blocks_head_closed = getIntAtOffset(src, off += 4);
+		var blocks_head_open = getIntAtOffset(src, off += 4);
+		var max_trial = getIntAtOffset(src, off += 4);
+		var capacity = getLongAtOffset(src, off += 4);
+		var size = getLongAtOffset(src, off += 8);
+
+		var array = new Nodes();
+		array.pos = getLongAtOffset(src, off += 8);
+
+		var infos = new NodeInfos();
+		infos.pos = getLongAtOffset(src, off += 8);
+
+		var blocks = new Blocks();
+		blocks.pos = getLongAtOffset(src, off += 8);
+
+		var rejects = new Rejects();
+		rejects.pos = getLongAtOffset(src, off += 8);
+
+		var lengths = new long[]{ //
+				getLongAtOffset(src, off += 8), //
+				getLongAtOffset(src, off += 8), //
+				getLongAtOffset(src, off += 8), //
+				getLongAtOffset(src, off += 8) //
+		};
+
+		var slices = Map.of( //
+				array, src.asSlice(off += 8, lengths[0]), //
+				infos, src.asSlice(off += lengths[0], lengths[1]), //
+				blocks, src.asSlice(off += lengths[1], lengths[2]), //
+				rejects, src.asSlice(off += lengths[2], lengths[3])//
+		);
+
+		for (var e : slices.entrySet()) {
+			var cb = e.getKey();
+			var ms = e.getValue();
+
+			if (copy) {
+				var seg = MemorySegment.allocateNative(ms.byteSize(), cb.alignment());
+				seg.copyFrom(ms);
+				ms = seg;
+			}
+			cb.buffer = ms;
+		}
+
+		var c = factory.allocate(array, infos, blocks, rejects, ordered);
+		c.blocks_head_full = blocks_head_full;
+		c.blocks_head_open = blocks_head_open;
+		c.blocks_head_closed = blocks_head_closed;
+		c.max_trial = max_trial;
+		c.capacity = capacity;
+		c.size = size;
+
+		return c;
+	}
+
+	static <T extends BaseCedar> T deserialize(Factory<T> factory, Path src, boolean copy) {
+		MemorySegment ms = null;
+		try {
+			ms = MemorySegment.mapFile(src, 0, Files.size(src), MapMode.READ_WRITE).share();
+			return deserialize(factory, ms, copy);
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		} finally {
+			if (ms != null && copy) {
+				ms.close();
+			}
+		}
+	}
+
+	static final long mask(long v) {
+		return v == NO_VALUE ? NO_VALUE_U64 : v;
+	}
+
 	final Nodes array;
 	final NodeInfos infos;
+
 	final Blocks blocks;
 	final boolean ordered;
-
 	final Rejects reject;
 	int blocks_head_full;
 	int blocks_head_closed;
 	int blocks_head_open;
 	int max_trial;
+
 	long capacity;
+
 	long size;
 
 	protected BaseCedar(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, boolean ordered) {
@@ -81,7 +180,11 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 
 		size += 256;
 
-		return i32(((size >> 8) - 1));
+		return i32((size >> 8) - 1);
+	}
+
+	public final Map<String, Long> allocation() {
+		return Map.of("array", array.byteSize(), "blocks", blocks.byteSize(), "infos", infos.byteSize(), "reject", reject.byteSize());
 	}
 
 	public abstract <E extends Map.Entry<String, Integer>> void build(Iterable<E> kv);
@@ -109,9 +212,20 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		return c_p != 0;
 	}
 
-	public abstract void erase(String key);
+	public abstract long erase(String key);
 
-	public abstract Match get(String str);
+	/**
+	 * Returns the value associated with the key. The value will be an int if successful otherwise
+	 * it will be either {@link BaseCedar#NO_VALUE} or {@link BaseCedar#ABSENT}. <br>
+	 * Unlike rust, we use long to represent the result in order to avoid boxing the value into an
+	 * {@link OptionalInt}. Once Valhalla is out, we can revert this back.
+	 *
+	 * @param key
+	 * @return
+	 */
+	public abstract long find(String key);
+
+	public abstract Match get(String key);
 
 	final int get_head(int type) {
 		return switch (type) {
@@ -270,7 +384,7 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	public abstract Stream<TextMatch> scan(String text);
 
 	public void serialize(MemorySegment dst) {
-		var off = 0;
+		var off = 0L;
 
 		setByteAtOffset(dst, off, (byte) (ordered ? 1 : 0));
 		setIntAtOffset(dst, off += 1, blocks_head_full);
@@ -333,5 +447,4 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	public abstract void update(String key, int value);
 
 	public abstract Stream<Match> withCommonPrefix(String key);
-
 }

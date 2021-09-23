@@ -149,7 +149,7 @@ final class Blocks extends CedarBuffer {
 	}
 
 	void require(long n) {
-		if ((pos + n) >= cap(UNIT)) {
+		if ((pos + n) > cap(UNIT)) {
 			grow(n, UNIT);
 		}
 	}
@@ -377,7 +377,7 @@ final class NodeInfos extends CedarBuffer {
 	}
 
 	void require(long n) {
-		if ((pos + n) >= cap(UNIT)) {
+		if ((pos + n) > cap(UNIT)) {
 			grow(n, UNIT);
 		}
 	}
@@ -521,7 +521,7 @@ final class Nodes extends CedarBuffer {
 	}
 
 	void require(long n) {
-		if ((pos + n) >= cap(UNIT)) {
+		if ((pos + n) > cap(UNIT)) {
 			grow(n, UNIT);
 		}
 	}
@@ -605,7 +605,7 @@ final class Rejects extends CedarBuffer {
 	}
 
 	void require(long n) {
-		if ((pos + n) >= cap(UNIT)) {
+		if ((pos + n) > cap(UNIT)) {
 			grow(n, UNIT);
 		}
 	}

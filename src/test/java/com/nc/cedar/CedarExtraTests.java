@@ -5,6 +5,7 @@ import static com.nc.cedar.CedarTestSupport.vec;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
+import org.junit.Assert;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -27,6 +28,30 @@ public class CedarExtraTests extends BaseCedarTests {
 			assertEquals(this.end, end);
 			assertEquals(this.value, value);
 		}
+	}
+
+	/**
+	 * https://github.com/MnO2/cedarwood/issues/12
+	 */
+	@Test
+	public void test_delete_prefix_wont_corrupt_trie() {
+		var c = instantiate();
+
+		c.update("AA", 0);
+		c.update("AB", 1);
+
+		Assert.assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & c.erase("A")) != 0);
+		Assert.assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & c.erase("A")) != 0);
+
+		Assert.assertEquals(0, c.find("AA"));
+		Assert.assertEquals(1, c.find("AB"));
+
+		Assert.assertEquals(0, c.erase("AA"));
+		Assert.assertEquals(1, c.erase("AB"));
+
+		Assert.assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & c.erase("AA")) != 0);
+		Assert.assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & c.erase("AB")) != 0);
+
 	}
 
 	@Test

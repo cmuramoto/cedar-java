@@ -8,7 +8,6 @@ import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
@@ -42,6 +41,7 @@ public class CedarSerializationTests extends BaseCedarTests {
 			this.max = max;
 			this.length = length;
 			this.copy = copy;
+			this.reduced = reduced;
 		}
 
 		@Override
@@ -58,15 +58,19 @@ public class CedarSerializationTests extends BaseCedarTests {
 		}
 	}
 
-	private BaseCedar deserialize(Path tmp, boolean copy) {
-		return reduced ? ReducedCedar.deserialize(tmp, copy) : Cedar.deserialize(tmp, copy);
-	}
-
 	private void dump(String[] dict) throws IOException {
 		Files.write(Paths.get("dump.txt"), Arrays.asList(dict), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 	}
 
-	// specialized type to avoid virtual calls
+	// specialized by type to avoid virtual calls
+	private void run(BaseCedar cedar, String[] dict) {
+		if (cedar instanceof Cedar c) {
+			run(c, dict);
+		} else if (cedar instanceof ReducedCedar r) {
+			run(r, dict);
+		}
+	}
+
 	private void run(Cedar cedar, String[] dict) {
 		for (var i = 0; i < dict.length; i++) {
 			assertEquals(i, cedar.get(dict[i]).value());
@@ -75,7 +79,7 @@ public class CedarSerializationTests extends BaseCedarTests {
 
 	private void run(ReducedCedar cedar, String[] dict) {
 		for (var i = 0; i < dict.length; i++) {
-			assertEquals(i, cedar.get(dict[i]).value());
+			assertEquals(i, cedar.find(dict[i]));
 		}
 	}
 
@@ -106,11 +110,7 @@ public class CedarSerializationTests extends BaseCedarTests {
 
 		for (var i = 0; i < loops; i++) {
 			now = nanoTime();
-			if (reduced) {
-				run((ReducedCedar) cedar, dict);
-			} else {
-				run((Cedar) cedar, dict);
-			}
+			run(cedar, dict);
 			btrips.add(nanoTime() - now);
 		}
 
@@ -129,11 +129,7 @@ public class CedarSerializationTests extends BaseCedarTests {
 			cedar = deserialize(tmp, r.copy);
 			times.add(nanoTime() - now);
 			now = nanoTime();
-			if (reduced) {
-				run((ReducedCedar) cedar, dict);
-			} else {
-				run((Cedar) cedar, dict);
-			}
+			run(cedar, dict);
 			trips.add(nanoTime() - now);
 			cedar.close();
 		}
@@ -165,7 +161,7 @@ public class CedarSerializationTests extends BaseCedarTests {
 		}
 
 		var key_values = toMap(dict);
-		var cedar = new ReducedCedar();
+		var cedar = instantiate();
 		cedar.build(key_values);
 
 		run(cedar, dict);
@@ -175,21 +171,21 @@ public class CedarSerializationTests extends BaseCedarTests {
 		cedar.serialize(tmp);
 		cedar.close();
 
-		cedar = ReducedCedar.deserialize(tmp, true);
+		cedar = deserialize(tmp, true);
 		run(cedar, dict);
 		cedar.close();
 
-		cedar = ReducedCedar.deserialize(tmp, false);
+		cedar = deserialize(tmp, false);
 		run(cedar, dict);
 
 		// re-serialize mmaped
 		cedar.serialize(tmp);
 
-		cedar = ReducedCedar.deserialize(tmp, true);
+		cedar = deserialize(tmp, true);
 		run(cedar, dict);
 		cedar.close();
 
-		cedar = ReducedCedar.deserialize(tmp, false);
+		cedar = deserialize(tmp, false);
 		run(cedar, dict);
 	}
 

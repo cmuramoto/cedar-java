@@ -1,5 +1,6 @@
 # cedar-java
-A java backport of rust's [cedarwood](https://github.com/MnO2/cedarwood), an eficient updatable double array trie, with some additions from the original [cedar](http://www.tkl.iis.u-tokyo.ac.jp/~ynaga/cedar/).
+
+A Java backport of Rust's [cedarwood](https://github.com/MnO2/cedarwood), an efficiently-updatable double-array trie, with some additions from the original [cedar](http://www.tkl.iis.u-tokyo.ac.jp/~ynaga/cedar/) and (de-)serialization support.
 
 This trie works like a SortedMap<String,int> and it's lookups run in O(k), where k is the length of the key.
 
@@ -20,7 +21,7 @@ This library requires no additional dependencies, but requires some **jvm args**
 
 It won't work with any jvm version other than 16, either due to missing apis (older vms) or due to foreing-api changes/class loading restriction with classes compiled with preview features (jdk 17). Backport should be straightforward: MemorySegment->ByteBuffer, records->final immutable classes. 
 
-**Storing values**:
+#### Storing values
 
 ```java
 
@@ -49,7 +50,7 @@ cedar.build(map);
 
 ```
 
-**Retrieving values**:
+#### Retrieving values
 
 Value retrieval is slightly distinct from rust's version and some additional methods for streaming and suffix construction are provided.
 
@@ -85,7 +86,7 @@ List<TextMatch> matches = cedar.scan(text).toList();
 //{begin: 8, end: 11, value: 3} -> bar
 ```
 
-**Finding by prefix and completing corresponding suffixes**
+#### Finding by prefix and completing corresponding suffixes
 
 ```java
 var cedar = new Cedar();
@@ -110,7 +111,7 @@ var matched = cedar.predict(prefix).mapToInt(match -> {
 assertEquals(values.length - 1, matched);
 ```
 
-### Streaming
+#### Streaming
 
 An empty prefix can be used to stream all entries of the trie:
 
@@ -135,7 +136,7 @@ Stream<String> keys = cedar.keys();
 IntStream values = cedar.values();
 ```
 
-### Serialization
+#### Serialization
 
 Cedar trie basically encapsulates 4 flat off-heap arrays, which translates to trivial copy operations:
 
@@ -180,3 +181,28 @@ cedar.update(key_utf8,0);
 cedar.get(key_utf8);
 ```
 
+Memory allocated by Cedar starts with 256x8=2048 bytes for its backing "array" and every time it needs to reallocate it doubles the required capacity. For small tries this is not an issue, however when it becomes huge the amount
+
+Consider the following example for zero padded numbers (9 bytes each):
+
+```java
+static final int MAX = 100_000_000;
+
+static String str(int v) {
+  return String.format("%09d", v);
+}
+
+void testHugeCedar() {
+  IntStream.range(0, MAX).sorted().forEach(v -> {
+    cedar.update(str(v), v);
+  });
+}
+```
+
+When **v=63576696**, the structures will double in size, the backing array with 1GB will grow to 2GB, which means it will reserve enough space to store keys up to **v=127153513** in order to insert a single key, which may cause allocation stalls. So if your dataset has about 70-80 million keys a best fit strategy might be using two cedars, one containing the max numbers of keys before a resize (63576695) and the other the rest.
+
+As of now, there's no support for memory reallocation, meaning, in order to grow from 1GB to 2GB, first we allocate a 2GB chunk, copy the 1GB into it and then release the buffer. This may trigger OOME or swapping when the structure grows very large.
+
+### Performance
+
+As stated, lookups run in O(k), regardless the size of the trie. In the example above, lookups reach peak performance of about 9 million (ZGC) to 10 million (ParallelGC/G1GC) queries/second on (a core i7-10750H 2.6GHz), for tries with 10-100 million keys.

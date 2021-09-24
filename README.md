@@ -206,3 +206,55 @@ As of now, there's no support for memory reallocation, meaning, in order to grow
 ### Performance
 
 As stated, lookups run in O(k), regardless the size of the trie. In the example above, lookups reach peak performance of about 9 million (ZGC) to 10 million (ParallelGC/G1GC) queries/second on (a core i7-10750H 2.6GHz), for tries with 10-100 million keys.
+
+Comparing with the original C [cedar](http://www.tkl.iis.u-tokyo.ac.jp/~ynaga/cedar/) implementation for the distinct and skew datasets we got:
+
+| Dataset  | #keys| #distinct| C ns/read | Java ns/read | C ns/write | Java ns/write |
+| --- | --- | --- | --- | --- | --- | --- |
+| [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2)  | 28.772.169 | 28.772.169| 233.98 | 377.92 | 626.38  | 665.05|
+| [skew](http://web.archive.org/web/20120206015921/http://www.naskitis.com/skew1_1.bz2)  | 177.999.203 | 612.219 | 31.55 | 89.72| 53.23 | 37.47|
+
+Java tests run with:
+
+```none
+-Xmx128m -XX:MaxDirectMemorySize=4G
+```
+
+Oddly enough java seems to perform better in skewed writes. 
+
+The measurement used is different and more granular from that employed in C code, with nano-second measurement for every operation
+
+```java
+long query;
+
+long find(Cedar cedar, String key) {
+  var utf8 = Bits.utf8(key); // won't alloc for ascii
+  var now = System.nanoTime();
+  var rv = cedar.find(utf8);
+  query += (System.nanoTime() - now);
+  return rv;
+}
+```
+
+It's hard to discount for GC side effects in these tests since lots of short lived Strings are created on demand. By filling the trie, unmapping the source file and keeping a sample of 48 keys on heap with average length of 10.08 (slightly larger than the dataset average which is 9.58) and running lookups in a tight loop  guaranteed 0 allocations and less granular measurements
+
+
+```java
+long run(Cedar c, byte[][] samples, int ops) {
+  var now = System.currentTimeMillis();
+  for (var i = 0; i < ops; i++) {
+    for (var key : samples) {
+      assertTrue((c.find(key) & BaseCedar.ABSENT_OR_NO_VALUE) != 0);
+    }
+  }
+  return TimeUnit.MILLISECONDS.toNanos(System.currentTimeMillis() - now);
+}
+
+double avg = run(...)/(ops*sampes.length);
+```
+, we get:
+
+| Dataset  | #keys| #samples| #operations | ns/read |
+| --- | --- | --- | --- | --- |
+| [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2)  | 28.772.169 | 48 | 13.81.064.112 |30.10 |
+

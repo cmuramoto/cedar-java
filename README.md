@@ -236,7 +236,7 @@ long find(Cedar cedar, String key) {
 }
 ```
 
-It's hard to discount for GC side effects in these tests since lots of short lived Strings are created on demand. By filling the trie, unmapping the source file and keeping a sample of 48 keys on heap with average length of 10.08 (slightly larger than the dataset average which is 9.58) and running lookups in a tight loop  guaranteed 0 allocations and less granular measurements
+It's hard to discount for GC side effects in these tests since lots of short lived Strings are created on demand. By filling the trie, unmapping the source file and keeping a sample of 48 keys on heap with average length of 10.08 (slightly larger than the dataset average which is 9.58) and running lookups in a tight loops with guaranteed 0 allocations and less granular measurements
 
 
 ```java

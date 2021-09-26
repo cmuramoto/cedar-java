@@ -35,6 +35,8 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		T allocate(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, int flags);
 	}
 
+	static final int REALLOC_CAP = Integer.getInteger("Cedar.REALLOC_CAP", 0);
+
 	static final int BLOCK_TYPE_CLOSED = 0;
 	static final int BLOCK_TYPE_OPEN = 1;
 	static final int BLOCK_TYPE_FULL = 2;
@@ -139,6 +141,12 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		}
 	}
 
+	static void guardUpdate(byte[] key, long from, int start, int end) {
+		if (from == 0 && end == 0 || (end > key.length || end < start)) {
+			throw new UnsupportedOperationException("Invalid key/offsets");
+		}
+	}
+
 	/**
 	 * @param v
 	 *            - 34 bit integer
@@ -150,13 +158,14 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	}
 
 	final Nodes array;
-	final NodeInfos infos;
 
+	final NodeInfos infos;
 	final Blocks blocks;
 	final Rejects reject;
 	final int flags;
 	int blocks_head_full;
 	int blocks_head_closed;
+
 	int blocks_head_open;
 
 	int max_trial;
@@ -339,9 +348,15 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	public abstract long erase(String key);
 
 	/**
-	 * Find's the associated value with the key. Unlike rust, we use long to represent the result in
-	 * order to avoid boxing the value into an {@link OptionalInt}. Once Valhalla is out, we can
-	 * revert this back.
+	 * @param key
+	 * @return {@link BaseCedar#find(byte[], int, int)}, with start=0 and end=key.length
+	 */
+	public abstract long find(byte[] key);
+
+	/**
+	 * Find's the associated value with the slice [start,end) of the key. Unlike rust, we use long
+	 * to represent the result in order to avoid boxing the value into an {@link OptionalInt}. Once
+	 * Valhalla is out, we can revert this back.
 	 *
 	 * @param key
 	 *            - utf8 encoded key
@@ -351,7 +366,7 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	 *         {@link BaseCedar#ABSENT} if there's a single byte that does not match the trie at any
 	 *         level (e.g. "banana" exists and query is "badana").
 	 */
-	public abstract long find(byte[] key);
+	public abstract long find(byte[] key, int start, int end);
 
 	/**
 	 * Delegates to {@link BaseCedar#find(byte[])}, by converting the key using
@@ -695,7 +710,16 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		push_block(idx, to, isEmpty);
 	}
 
+	/**
+	 * Delegates to {@link BaseCedar#update(byte[], int, int, int)}, with start=0 and end=key.length
+	 *
+	 * @param utf8
+	 * @param value
+	 * @return
+	 */
 	public abstract int update(byte[] utf8, int value);
+
+	public abstract int update(byte[] utf8, int value, int start, int end);
 
 	public abstract int update(String key, int value);
 

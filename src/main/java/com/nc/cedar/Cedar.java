@@ -158,7 +158,7 @@ public final class Cedar extends BaseCedar {
 	}
 
 	public Cedar() {
-		this(true);
+		this(REALLOC_CAP);
 	}
 
 	public Cedar(boolean ordered) {
@@ -289,13 +289,17 @@ public final class Cedar extends BaseCedar {
 
 	@Override
 	public long find(byte[] key) {
+		return find(key, 0, key.length);
+	}
+
+	@Override
+	public long find(byte[] key, int pos, int end) {
 		var from = 0L;
 		var to = 0L;
-		var pos = 0;
 		var array = this.array;
 		// hoist in local, then perform a single heap write post-loop
 
-		while (pos < key.length) {
+		while (pos < end) {
 			to = u64(array.base(from) ^ u32(key[pos]));
 			if (array.check(to) != i32(from)) {
 				return ABSENT;
@@ -725,17 +729,19 @@ public final class Cedar extends BaseCedar {
 
 	@Override
 	public int update(byte[] utf8, int value) {
-		return update(utf8, value, 0, 0);
+		return update(utf8, value, 0, utf8.length);
 	}
 
-	private int update(byte[] key, int value, long from, int pos) {
-		if (from == 0 && key.length == 0) {
-			throw new UnsupportedOperationException("Empty key");
-		}
+	@Override
+	public final int update(byte[] utf8, int value, int start, int end) {
+		return update(utf8, value, 0L, start, end);
+	}
 
-		while (pos < key.length) {
-			from = follow(from, key[pos]);
-			pos++;
+	private int update(byte[] key, int value, long from, int pos, int end) {
+		guardUpdate(key, from, pos, end);
+
+		while (pos < end) {
+			from = follow(from, key[pos++]);
 		}
 
 		var to = follow(from, (byte) 0);
@@ -745,7 +751,7 @@ public final class Cedar extends BaseCedar {
 
 	@Override
 	public int update(String key, int value) {
-		return update(utf8(key), value, 0, 0);
+		return update(utf8(key), value);
 	}
 
 	public IntStream values() {

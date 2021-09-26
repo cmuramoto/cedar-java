@@ -199,13 +199,21 @@ void testHugeCedar() {
 }
 ```
 
-When **v=63576696**, the structures will double in size, the backing array with 1GB will grow to 2GB, which means it will reserve enough space to store keys up to **v=127153513** in order to insert a single key, which may cause allocation stalls. So if your dataset has about 70-80 million keys a best fit strategy might be using two cedars, one containing the max numbers of keys before a resize (63576695) and the other the rest.
+When **v=63576696**, the structures will double in size, the backing array with 1GB will grow to 2GB, which means it will reserve enough space to store keys up to **v=127153513** in order to insert a single key, which may cause allocation stalls.
 
-As of now, there's no support for memory reallocation, meaning, in order to grow from 1GB to 2GB, first we allocate a 2GB chunk, copy the 1GB into it and then release the buffer. This may trigger OOME or swapping when the structure grows very large.
+To cope with this, cedar can be instantiated with a reallocation cap: 
+
+```java
+var cedar = new Cedar(4*1024*1024);
+```
+
+If reallocation demands less than the cap (4MB), say 512 bytes, only 512 bytes will be used, otherwise up to 4MB will be used. This policy imposes a penalty for creating huge tries from scratch, but caps memory waste once it grows very large. For the [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2 keys dataset
+
+As of now, there's no true support for memory reallocation, meaning, in order to grow from 1024MB to 1028MB, first we allocate a 1028MB chunk, copy the 1GB into it and then release the buffer. This may trigger OOME or swapping when the structure grows very large.
 
 ### Performance
 
-As stated, lookups run in O(k), regardless the size of the trie. In the example above, lookups reach peak performance of about 9 million (ZGC) to 10 million (ParallelGC/G1GC) queries/second on (a core i7-10750H 2.6GHz), for tries with 10-100 million keys.
+As stated, lookups run in O(k), regardless the size of the trie. Of course in practice, a small trie will perform better due to cache locality. In the example above, lookups reach peak performance of about 9 million (ZGC) to 10 million (ParallelGC/G1GC) queries/second on (a core i7-10750H 2.6GHz), for tries with 10-100 million keys.
 
 Comparing with the original C [cedar](http://www.tkl.iis.u-tokyo.ac.jp/~ynaga/cedar/) implementation for the distinct and skew datasets we got:
 
@@ -222,7 +230,7 @@ Java tests run with:
 
 Oddly enough java seems to perform better in skewed writes. 
 
-The measurement used is different and more granular from that employed in C code, with nano-second measurement for every operation
+The measurement used was different and more granular from that employed in C code, with nano-second measurement for every operation
 
 ```java
 long query;
@@ -236,18 +244,85 @@ long find(Cedar cedar, String key) {
 }
 ```
 
-It's hard to discount for GC side effects in these tests since lots of short lived Strings are created on demand. By filling the trie, unmapping the source file and keeping a sample of 48 keys on heap with average length of 10.08 (slightly larger than the dataset average which is 9.58) and running lookups in a tight loops with guaranteed 0 allocations and less granular measurements
+After further inspection of C benchmark code, I noticed it expects all query data to be in memory:
+
+```C
+char* data = 0;
+const size_t size = read_data (queries, data);
+// search
+int n (0), n_ (0);
+::gettimeofday (&st, NULL);
+lookup (t, data, size, n_, n);
+::gettimeofday (&et, NULL);
+double elapsed = (et.tv_sec - st.tv_sec) + (et.tv_usec - st.tv_usec) * 1e-6;
+std::fprintf (stderr, "%-20s %.2f sec (%.2f nsec per key)\n",
+                  "Time to search:", elapsed, elapsed * 1e9 / n);
+```
+where
+
+```C
+void lookup (cedar_t* t, char* data, size_t size, int& n_, int& n) {
+  for (char* start (data), *end (data), *tail (data + size);
+       end != tail; start = ++end) {
+    end = find_sep (end);
+    if (lookup_key (t, start, end - start))
+      ++n_;
+    ++n;
+  }
+}
+
+inline char* find_sep (char* p) { while (*p != '\n') ++p; *p = '\0'; return p; }
+
+inline bool lookup_key (cedar_t* t, const char* key, size_t len)
+{ return t->exactMatchSearch <int> (key, len) >= 0; }
+```
+which translates to Java as
+
+```java
+void benchLookup(Cedar cedar, byte[] data) {
+  var start = 0;
+  var lines = 0;
+  var found = 0;
+  var now = System.nanoTime();
+  for (var i = 0; i < data.length; i++) {
+    if (data[i] == '\n') {
+      if ((cedar.find(data, start, i) & BaseCedar.ABSENT_OR_NO_VALUE) == 0) {
+        found++;
+      }
+      lines++;
+      start = i + 1;
+    }
+  }
+  var dq = (double)System.nanoTime() - now;
+
+  System.out.printf("lines: %d. found: %d. query time: %.2f. ns/q: %.2f\n", lines, found, dq, dq / lines);
+}
+```
+
+Replacing reads from memory segments and byte arrays with Unsafe, disregarding any bounds checks, we end up with:
+
+| Dataset  | #keys| #distinct | Java ns/read | % vs C |
+| --- | --- | --- | --- | --- |
+| [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2)  | 28.772.169 | 28.772.169| 280.57 | 20.11% slower |
+| [skew](http://web.archive.org/web/20120206015921/http://www.naskitis.com/skew1_1.bz2)  | 177.999.203 | 612.219 | 38.66 | 22.53% slower | 
+
+
+Using a sample of 64 keys on heap with average length of 11.08 (slightly larger than the dataset average which is 9.58) and running lookups in a tight loops with guaranteed 0 allocations and less granular measurements
 
 
 ```java
-long run(Cedar c, byte[][] samples, int ops) {
-  var now = System.currentTimeMillis();
+long run(ReducedCedar c) {
+  var samples = this.samples;
+  var ops = ids;
+  var query = 0;
   for (var i = 0; i < ops; i++) {
+    var now = System.nanoTime();
     for (var key : samples) {
-      assertTrue((c.find(key) & BaseCedar.ABSENT_OR_NO_VALUE) != 0);
+      assertTrue((c.find(key) & BaseCedar.ABSENT_OR_NO_VALUE) == 0);
     }
+    query += (System.nanoTime() - now);
+    shuffle(samples);
   }
-  return TimeUnit.MILLISECONDS.toNanos(System.currentTimeMillis() - now);
 }
 
 double avg = run(...)/(ops*sampes.length);
@@ -256,5 +331,5 @@ double avg = run(...)/(ops*sampes.length);
 
 | Dataset  | #keys| #samples| #operations | ns/read |
 | --- | --- | --- | --- | --- |
-| [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2)  | 28.772.169 | 48 | 13.81.064.112 |30.10 |
+| [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2)  | 28.772.169 | 64 | 1.841.418.816 | 83.17 |
 

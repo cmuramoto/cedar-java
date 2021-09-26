@@ -3,10 +3,8 @@ package com.nc.cedar;
 import static com.nc.cedar.Bits.i32;
 import static com.nc.cedar.Bits.u32;
 import static com.nc.cedar.Bits.u64;
-import static jdk.incubator.foreign.MemoryAccess.getByteAtOffset;
 import static jdk.incubator.foreign.MemoryAccess.getIntAtOffset;
 import static jdk.incubator.foreign.MemoryAccess.getLongAtOffset;
-import static jdk.incubator.foreign.MemoryAccess.setByteAtOffset;
 import static jdk.incubator.foreign.MemoryAccess.setIntAtOffset;
 import static jdk.incubator.foreign.MemoryAccess.setLongAtOffset;
 
@@ -24,9 +22,9 @@ import jdk.incubator.foreign.MemorySegment;
 
 /**
  * Common structure and methods shared by {@link Cedar} and {@link ReducedCedar}. <br>
- * There's lots of code duplication in some methods/iterators in the subclasses due to the fact that
- * some specialized call sites, e.g., {@link Nodes#base(int)} and {@link Nodes#base_r(int)} run in
- * tight loops and we want to avoid virtual calls/branching as much as possible.
+ * There's lots of code duplication in some methods/iterators because we want to place the final
+ * method calls at the specialized call sites, e.g., {@link Nodes#base(int)} and
+ * {@link Nodes#base_r(int)} run in tight loops and this helps avoiding virtual calls/branching.
  *
  * @author cmuramoto
  */
@@ -34,19 +32,24 @@ import jdk.incubator.foreign.MemorySegment;
 public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 
 	interface Factory<T extends BaseCedar> {
-		T allocate(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, boolean ordered);
+		T allocate(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, int flags);
 	}
 
 	static final int BLOCK_TYPE_CLOSED = 0;
 	static final int BLOCK_TYPE_OPEN = 1;
 	static final int BLOCK_TYPE_FULL = 2;
 	static final int VALUE_LIMIT = Integer.MAX_VALUE - 1;
-	public static final int NO_VALUE_I32 = -1;
-	public static final long NO_VALUE_U64 = NO_VALUE_I32 & 0xFFFFFFFFL;
-	public static final long NO_VALUE = 1L << 31;
-	public static final long ABSENT = 1L << 32;
 
-	static final long ABSENT_OR_NO_VALUE = NO_VALUE | ABSENT;
+	public static final long NO_VALUE = 1L << 32;
+	public static final long ABSENT = 1L << 33;
+	public static final long ABSENT_OR_NO_VALUE = NO_VALUE | ABSENT;
+
+	static long ceilPowerOfTwo(long v) {
+		// capped to 1GB
+		var max = 1L << 30;
+		var n = -1L >>> Long.numberOfLeadingZeros(v - 1);
+		return (n < 0) ? 1 : (n >= max ? max : n + 1);
+	}
 
 	static void close(CedarBuffer c) {
 		if (c != null) {
@@ -54,10 +57,19 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		}
 	}
 
+	static int combine(boolean ordered, int realloc) {
+		var rv = ordered ? 0x1 : 0;
+		if (realloc > 0) {
+			realloc = (int) ceilPowerOfTwo(realloc);
+			rv |= (realloc << 1);
+		}
+		return rv;
+	}
+
 	static <T extends BaseCedar> T deserialize(Factory<T> factory, MemorySegment src, boolean copy) {
 		var off = 0L;
-		var ordered = getByteAtOffset(src, off) == 1;
-		var blocks_head_full = getIntAtOffset(src, off += 1);
+		var flags = getIntAtOffset(src, off);
+		var blocks_head_full = getIntAtOffset(src, off += 4);
 		var blocks_head_closed = getIntAtOffset(src, off += 4);
 		var blocks_head_open = getIntAtOffset(src, off += 4);
 		var max_trial = getIntAtOffset(src, off += 4);
@@ -102,7 +114,7 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 			cb.buffer = ms;
 		}
 
-		var c = factory.allocate(array, infos, blocks, rejects, ordered);
+		var c = factory.allocate(array, infos, blocks, rejects, flags);
 		c.blocks_head_full = blocks_head_full;
 		c.blocks_head_open = blocks_head_open;
 		c.blocks_head_closed = blocks_head_closed;
@@ -127,19 +139,26 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		}
 	}
 
-	static final long mask(long v) {
-		return v == NO_VALUE ? NO_VALUE_U64 : v;
+	/**
+	 * @param v
+	 *            - 34 bit integer
+	 * @return - true if v is not marked as either {@link BaseCedar#ABSENT} or
+	 *         {@link BaseCedar#NO_VALUE}.
+	 */
+	public static boolean isValue(long v) {
+		return (v & ABSENT_OR_NO_VALUE) != 0;
 	}
 
 	final Nodes array;
 	final NodeInfos infos;
 
 	final Blocks blocks;
-	final boolean ordered;
 	final Rejects reject;
+	final int flags;
 	int blocks_head_full;
 	int blocks_head_closed;
 	int blocks_head_open;
+
 	int max_trial;
 
 	long capacity;
@@ -147,19 +166,59 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	long size;
 
 	protected BaseCedar(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, boolean ordered) {
+		this(array, infos, blocks, reject, ordered, 0);
+	}
+
+	protected BaseCedar(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, boolean ordered, int realloc) {
+		this(array, infos, blocks, reject, combine(ordered, realloc));
+	}
+
+	protected BaseCedar(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, int flags) {
 		this.array = array;
 		this.infos = infos;
 		this.blocks = blocks;
 		this.reject = reject;
-		this.ordered = ordered;
+		this.flags = flags;
 	}
 
 	final int add_block() {
-		if (size == capacity) {
-			capacity += capacity;
-			array.resize(capacity);
-			infos.resize(capacity);
-			blocks.resize(capacity >> 8);
+		var cap = this.capacity;
+		if (size == cap) {
+			var r = realloc();
+			var inc = r;
+
+			if (r > 0) {
+				if ((cap + r) > (cap + cap)) {
+					inc = cap;
+				} else {
+					inc = r;
+				}
+			} else {
+				inc = cap;
+			}
+
+			capacity = cap = cap + inc;
+
+			array.resize(cap);
+			infos.resize(cap);
+
+			if (r > 0) {
+				var bc = blocks.cap();
+				var req = ceilPowerOfTwo(cap >> 8);
+
+				if (bc < req) {
+					r = req;
+				} else {
+					// blocks need only to be as big as cap >> 8
+					r = 0;
+				}
+			} else {
+				r = cap >> 8;
+			}
+
+			if (r > 0) {
+				blocks.resize(r);
+			}
 		}
 
 		blocks.head(size >> 8, i32(size));
@@ -183,16 +242,66 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		return i32((size >> 8) - 1);
 	}
 
+	/**
+	 * Number of bytes allocated for each internal 'array' and reallocation policy.
+	 *
+	 * @return
+	 */
 	public final Map<String, Long> allocation() {
-		return Map.of("array", array.byteSize(), "blocks", blocks.byteSize(), "infos", infos.byteSize(), "reject", reject.byteSize());
+		return Map.of("array", array.byteSize(), "blocks", blocks.byteSize(), "infos", infos.byteSize(), "reject", reject.byteSize(), "realloc", realloc());
 	}
 
+	/**
+	 * Inserts keys in the trie as if
+	 *
+	 * <pre>
+	 * <code>
+	 *   for(var e : kv) {
+	 *     update(e.getKey(), e.getValue());
+	 *   }
+	 * </code>
+	 * </pre>
+	 *
+	 * @param keys
+	 *            - dictionary
+	 */
 	public abstract <E extends Map.Entry<String, Integer>> void build(Iterable<E> kv);
 
+	/**
+	 * Inserts keys in the trie as if
+	 *
+	 * <pre>
+	 * <code>
+	 *   for(var e : map.entrySet()) {
+	 *     update(e.getKey(), e.getValue());
+	 *   }
+	 * </code>
+	 * </pre>
+	 *
+	 * @param keys
+	 *            - dictionary
+	 */
 	public abstract void build(Map<String, Integer> key_values);
 
+	/**
+	 * Inserts keys in the trie as if
+	 *
+	 * <pre>
+	 * <code>
+	 *   for(var i=0; i < keys.length; i++) {
+	 *     update(keys[i], i);
+	 *   }
+	 * </code>
+	 * </pre>
+	 *
+	 * @param keys
+	 *            - dictionary
+	 */
 	public abstract void build(String... keys);
 
+	/**
+	 * Releases the allocated memory. This instance will be unusable afterwards.
+	 */
 	public void close() {
 		close(array);
 		close(infos);
@@ -212,19 +321,67 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		return c_p != 0;
 	}
 
+	/**
+	 * Marks the key as absent in the trie.
+	 *
+	 * @param key
+	 *            - utf8 encoded string
+	 * @return - The value associated with {@link BaseCedar#find(byte[])}. Erase has no side effect
+	 *         if the reported value is either {@link BaseCedar#NO_VALUE} or
+	 *         {@link BaseCedar#ABSENT}.
+	 */
+	public abstract long erase(byte[] key);
+
+	/**
+	 * @param key
+	 * @return @see {@link BaseCedar#erase(byte[])}
+	 */
 	public abstract long erase(String key);
 
 	/**
-	 * Returns the value associated with the key. The value will be an int if successful otherwise
-	 * it will be either {@link BaseCedar#NO_VALUE} or {@link BaseCedar#ABSENT}. <br>
-	 * Unlike rust, we use long to represent the result in order to avoid boxing the value into an
-	 * {@link OptionalInt}. Once Valhalla is out, we can revert this back.
+	 * Find's the associated value with the key. Unlike rust, we use long to represent the result in
+	 * order to avoid boxing the value into an {@link OptionalInt}. Once Valhalla is out, we can
+	 * revert this back.
+	 *
+	 * @param key
+	 *            - utf8 encoded key
+	 * @return - A 32-bit value if key is present otherwise may return either
+	 *         {@link BaseCedar#NO_VALUE} if the key exists as a prefix (all bytes are there, but do
+	 *         not form a whole word, e.g. "banana" exists and query was "banan") or
+	 *         {@link BaseCedar#ABSENT} if there's a single byte that does not match the trie at any
+	 *         level (e.g. "banana" exists and query is "badana").
+	 */
+	public abstract long find(byte[] key);
+
+	/**
+	 * Delegates to {@link BaseCedar#find(byte[])}, by converting the key using
+	 * {@link Bits#utf8(String)}. This method is not final because we want the call to
+	 * {@link BaseCedar#find(byte[])} to be placed in the respective implementation's call sites.
 	 *
 	 * @param key
 	 * @return
 	 */
 	public abstract long find(String key);
 
+	/**
+	 * Exact lookup.
+	 *
+	 * @param key
+	 *            - utf8 encoded String.
+	 * @return - Returns a {@link Match}, if the key exists in the dictionary otherwise null. This
+	 *         method is meant to be used instead of find when the key needs to be rebuilt by
+	 *         calling {@link BaseCedar#suffix(Match)}.
+	 */
+	public abstract Match get(byte[] key);
+
+	/**
+	 * Delegates to {@link BaseCedar#get(byte[])}, by converting the key using
+	 * {@link Bits#utf8(String)}.
+	 *
+	 * @param key
+	 *            - string
+	 * @return - {@link BaseCedar#get(byte[]) }
+	 */
 	public abstract Match get(String key);
 
 	final int get_head(int type) {
@@ -236,12 +393,19 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		};
 	}
 
+	/**
+	 * @return Total bytes required to serialize this trie.
+	 */
 	public long imageSize() {
-		return 4 * 4 + 1 + 8 * 2 + array.totalSize() + infos.totalSize() + blocks.totalSize() + reject.totalSize();
+		return 4 * 5 + 8 * 2 + array.totalSize() + infos.totalSize() + blocks.totalSize() + reject.totalSize();
 	}
 
 	public final boolean isReduced() {
 		return this instanceof ReducedCedar;
+	}
+
+	final boolean ordered() {
+		return (flags & 0x1) == 0;
 	}
 
 	final void pop_block(int idx, int from, boolean last) {
@@ -285,6 +449,10 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 
 	}
 
+	/**
+	 * @param key
+	 * @return - All terminal nodes that share key as common prefix.
+	 */
 	public abstract Stream<Match> predict(String key);
 
 	final void push_block(int idx, int to, boolean empty) {
@@ -349,9 +517,52 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		infos.set(e, (byte) 0, (byte) 0);
 	}
 
+	final void push_e_node_mini(int e) {
+		var idx = e >> 6;
+		blocks.incrementNum(idx, 1);
+
+		if (blocks.num(idx) == 1) {
+			blocks.head(idx, e);
+			array.set(e, -e, -e);
+
+			if (idx != 0) {
+				// Move the block from 'Full' to 'Closed' since it has one free slot now.
+				transfer_block(idx, BLOCK_TYPE_FULL, BLOCK_TYPE_CLOSED, blocks_head_closed == 0);
+			}
+		} else {
+			var prev = blocks.head(idx);
+
+			var next = -array.check(prev);
+
+			// Insert to the edge immediately after the e_head
+			array.set(e, -prev, -next);
+
+			array.check(prev, -e);
+			array.base(next, -e);
+
+			// Move the block from 'Closed' to 'Open' since it has more than one free slot now.
+			if (blocks.num(idx) == 2 || blocks.trial(idx) == max_trial) {
+				assert (blocks.num(idx) > 1);
+				if (idx != 0) {
+					transfer_block(idx, BLOCK_TYPE_CLOSED, BLOCK_TYPE_OPEN, blocks_head_open == 0);
+				}
+			}
+
+			// Reset the trial stats
+			blocks.trial(idx, 0);
+		}
+
+		var rej = reject.at(blocks.num(idx));
+		if (blocks.reject(idx) < rej) {
+			blocks.reject(idx, rej);
+		}
+
+		infos.set(e, (byte) 0, (byte) 0);
+	}
+
 	final void push_sibling(long from, int base, byte label, boolean hasChild) {
 		boolean keep_order;
-
+		var ordered = ordered();
 		if (ordered) {
 			keep_order = label > infos.child(from);
 		} else {
@@ -381,13 +592,35 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		infos.sibling(base ^ u32(label), sibling);
 	}
 
+	final long realloc() {
+		return (flags >>> 1) & 0xFFFFFFFFL;
+	}
+
+	/**
+	 * At every offset in [0,...,text.length()] returns matching prefixes. <br>
+	 * This works like using a regex built with exact terms to find all matches in a text, and can
+	 * be thought as
+	 *
+	 * <pre>
+	 * </code>
+	 *   for(var i = 0; i < text.length();i++) {
+	 *   	yield predict(text.substring(i, i + 1));
+	 *   }
+	 * </code>
+	 * </pre>
+	 *
+	 * but it's much more efficient.
+	 *
+	 * @param text
+	 * @return
+	 */
 	public abstract Stream<TextMatch> scan(String text);
 
 	public void serialize(MemorySegment dst) {
 		var off = 0L;
 
-		setByteAtOffset(dst, off, (byte) (ordered ? 1 : 0));
-		setIntAtOffset(dst, off += 1, blocks_head_full);
+		setIntAtOffset(dst, off, flags);
+		setIntAtOffset(dst, off += 4, blocks_head_full);
 		setIntAtOffset(dst, off += 4, blocks_head_closed);
 		setIntAtOffset(dst, off += 4, blocks_head_open);
 		setIntAtOffset(dst, off += 4, max_trial);
@@ -436,6 +669,24 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 
 	public abstract String suffix(long to, int len);
 
+	/**
+	 * Returns the associated suffix with a match.
+	 *
+	 * <pre>
+	 * <code>
+	 *   var cedar = new Cedar();
+	 *   cedar.update("banana", 0);
+	 *   var matches = cedar.predict("ba");
+	 *
+	 *   matches.map(cedar::suffix).toArray(); // ["nana"]
+	 * </code>
+	 * </pre>
+	 *
+	 * @param m
+	 * @return
+	 */
+	public abstract String suffix(Match m);
+
 	final void transfer_block(int idx, int from, int to, boolean toBlockEmpty) {
 		var isLast = idx == blocks.next(idx);
 		var isEmpty = toBlockEmpty && blocks.num(idx) != 0;
@@ -444,7 +695,9 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		push_block(idx, to, isEmpty);
 	}
 
-	public abstract void update(String key, int value);
+	public abstract int update(byte[] utf8, int value);
+
+	public abstract int update(String key, int value);
 
 	public abstract Stream<Match> withCommonPrefix(String key);
 }

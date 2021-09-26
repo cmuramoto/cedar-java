@@ -161,7 +161,11 @@ public final class ReducedCedar extends BaseCedar {
 	}
 
 	public ReducedCedar(boolean ordered) {
-		this(Nodes.initial_r(), NodeInfos.initial(), Blocks.initial(), Rejects.initial(), ordered);
+		this(ordered, 0);
+	}
+
+	public ReducedCedar(boolean ordered, int realloc) {
+		super(Nodes.initial_r(), NodeInfos.initial(), Blocks.initial(), Rejects.initial(), ordered, realloc);
 
 		capacity = 256;
 		size = 256;
@@ -169,8 +173,12 @@ public final class ReducedCedar extends BaseCedar {
 		max_trial = 1;
 	}
 
-	private ReducedCedar(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, boolean ordered) {
-		super(array, infos, blocks, reject, ordered);
+	public ReducedCedar(int realloc) {
+		this(true, 0);
+	}
+
+	private ReducedCedar(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, int flags) {
+		super(array, infos, blocks, reject, flags);
 	}
 
 	private void begin(long from, long p, Scratch s) {
@@ -244,7 +252,8 @@ public final class ReducedCedar extends BaseCedar {
 		return common_prefix_iter(utf8(key));
 	}
 
-	private long erase(byte[] key) {
+	@Override
+	public long erase(byte[] key) {
 		var from = new Ptr();
 		var r = find(key, from);
 
@@ -288,7 +297,8 @@ public final class ReducedCedar extends BaseCedar {
 		return erase(utf8(key));
 	}
 
-	long find(byte[] key) {
+	@Override
+	public long find(byte[] key) {
 		var from = 0L;
 		var to = 0L;
 		var pos = 0;
@@ -484,6 +494,7 @@ public final class ReducedCedar extends BaseCedar {
 		return to;
 	}
 
+	@Override
 	public Match get(byte[] utf8) {
 		var from = new Ptr();
 
@@ -695,7 +706,7 @@ public final class ReducedCedar extends BaseCedar {
 			c = infos.sibling(base ^ u32(c));
 		}
 
-		if (ordered) {
+		if (ordered()) {
 			while (c != 0 && u32(c) <= u32(label)) {
 				if (pos == child.length) {
 					child = Arrays.copyOf(child, pos + 16);
@@ -733,6 +744,7 @@ public final class ReducedCedar extends BaseCedar {
 		return new String(s, 0, len, UTF8);
 	}
 
+	@Override
 	public String suffix(Match m) {
 		return suffix(m.from(), m.length());
 	}
@@ -753,8 +765,9 @@ public final class ReducedCedar extends BaseCedar {
 		return scratch;
 	}
 
-	public void update(byte[] utf8, int value) {
-		update(utf8, value, 0, 0);
+	@Override
+	public int update(byte[] utf8, int value) {
+		return update(utf8, value, 0, 0);
 	}
 
 	private int update(byte[] key, int value, long from, int pos) {
@@ -786,8 +799,8 @@ public final class ReducedCedar extends BaseCedar {
 	}
 
 	@Override
-	public void update(String key, int value) {
-		update(utf8(key), value, 0, 0);
+	public int update(String key, int value) {
+		return update(utf8(key), value, 0, 0);
 	}
 
 	public IntStream values() {

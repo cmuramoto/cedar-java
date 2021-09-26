@@ -37,6 +37,10 @@ final class Blocks extends CedarBuffer {
 		return 32;
 	}
 
+	long cap() {
+		return cap(UNIT);
+	}
+
 	int head(int ix) {
 		return head(u64(ix));
 	}
@@ -154,8 +158,8 @@ final class Blocks extends CedarBuffer {
 		}
 	}
 
-	void resize(long newLen) {
-		super.resize(newLen, UNIT);
+	void resize(long newSize) {
+		super.resize(newSize, UNIT);
 	}
 
 	long safeOffset(long ix) {
@@ -285,22 +289,30 @@ abstract class CedarBuffer {
 
 	final void resize(long newSize, long unit) {
 		var newLen = newSize * unit;
-		var next = MemorySegment.allocateNative(newLen, alignment()).share();
 		var curr = this.buffer;
 
-		if (curr.byteSize() > next.byteSize()) {
+		// should not reach here
+		if (newLen == curr.byteSize()) {
+			return;
+		}
+
+		var next = MemorySegment.allocateNative(newLen, alignment()).share();
+
+		// are we shrinking ???
+		if (curr.byteSize() > newLen) {
 			next.copyFrom(curr.asSlice(0, next.byteSize()));
 		} else {
 			next.copyFrom(curr);
 		}
+
 		if (!curr.isMapped()) {
-			this.buffer.close();
+			curr.close();
 		}
 
 		var ix = this.pos;
 		this.pos = newSize;
-
 		var off = toOffset(ix, unit);
+
 		for (; ix < newSize; ix++) {
 			set(next, off);
 			off += unit;
@@ -356,7 +368,7 @@ final class NodeInfos extends CedarBuffer {
 	}
 
 	byte child(long ix) {
-		return getByteAtOffset(buffer, safeOffset(ix) + 1);
+		return getByteAtOffset(buffer, safeOffset(ix) + 1L);
 	}
 
 	void child(long ix, byte v) {

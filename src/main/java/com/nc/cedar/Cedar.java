@@ -162,15 +162,23 @@ public final class Cedar extends BaseCedar {
 	}
 
 	public Cedar(boolean ordered) {
-		this(Nodes.initial(), NodeInfos.initial(), Blocks.initial(), Rejects.initial(), ordered);
+		this(ordered, 0);
+	}
+
+	public Cedar(boolean ordered, int realloc) {
+		super(Nodes.initial(), NodeInfos.initial(), Blocks.initial(), Rejects.initial(), ordered, realloc);
 
 		capacity = 256;
 		size = 256;
 		max_trial = 1;
 	}
 
-	private Cedar(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, boolean ordered) {
-		super(array, infos, blocks, reject, ordered);
+	public Cedar(int realloc) {
+		this(true, realloc);
+	}
+
+	private Cedar(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, int flags) {
+		super(array, infos, blocks, reject, flags);
 	}
 
 	private void begin(long from, long p, Scratch s) {
@@ -238,6 +246,7 @@ public final class Cedar extends BaseCedar {
 		return common_prefix_iter(utf8(key));
 	}
 
+	@Override
 	public long erase(byte[] key) {
 		var from = new Ptr();
 		var r = find(key, from);
@@ -278,6 +287,7 @@ public final class Cedar extends BaseCedar {
 		return erase(utf8(key));
 	}
 
+	@Override
 	public long find(byte[] key) {
 		var from = 0L;
 		var to = 0L;
@@ -445,15 +455,16 @@ public final class Cedar extends BaseCedar {
 		return to;
 	}
 
-	public Match get(byte[] utf8) {
+	@Override
+	public Match get(byte[] key) {
 		var from = new Ptr();
 
-		var r = find(utf8, from);
+		var r = find(key, from);
 
 		if ((r & ABSENT_OR_NO_VALUE) != 0) {
 			return null;
 		} else {
-			return new Match((int) r, utf8.length, from.v);
+			return new Match((int) r, key.length, from.v);
 		}
 	}
 
@@ -653,7 +664,7 @@ public final class Cedar extends BaseCedar {
 			c = infos.sibling(base ^ u32(c));
 		}
 
-		if (ordered) {
+		if (ordered()) {
 			while (c != 0 && u32(c) <= u32(label)) {
 				if (pos == child.length) {
 					child = Arrays.copyOf(child, pos + 16);
@@ -691,6 +702,7 @@ public final class Cedar extends BaseCedar {
 		return new String(s, 0, len, UTF8);
 	}
 
+	@Override
 	public String suffix(Match m) {
 		return suffix(m.from(), m.length());
 	}
@@ -711,8 +723,9 @@ public final class Cedar extends BaseCedar {
 		return scratch;
 	}
 
-	public void update(byte[] utf8, int value) {
-		update(utf8, value, 0, 0);
+	@Override
+	public int update(byte[] utf8, int value) {
+		return update(utf8, value, 0, 0);
 	}
 
 	private int update(byte[] key, int value, long from, int pos) {
@@ -731,8 +744,8 @@ public final class Cedar extends BaseCedar {
 	}
 
 	@Override
-	public void update(String key, int value) {
-		update(utf8(key), value, 0, 0);
+	public int update(String key, int value) {
+		return update(utf8(key), value, 0, 0);
 	}
 
 	public IntStream values() {

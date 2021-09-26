@@ -62,6 +62,10 @@ public final class Bits {
 		}
 	}
 
+	static long reallocateMemory(long address, long newSize) {
+		return U.reallocateMemory(address, newSize);
+	}
+
 	public static LongStream split(MemorySegment contiguous, byte sep) {
 		var itr = new PrimitiveIterator.OfLong() {
 			long pos;
@@ -159,10 +163,17 @@ public final class Bits {
 	}
 
 	static long u64(int n) {
-		return n & 0XFFFFFFFFL;
+		// this is the right conversion, however the code itself it not ready to deal with negative
+		// values, so keep the upcast as a signed promotion.
+		// return n & 0XFFFFFFFFL;
+		return n;
 	}
 
-	private static byte[] unwrap(String s) {
+	static byte u8(long n) {
+		return (byte) (n & 0xFF);
+	}
+
+	static byte[] unwrap(String s) {
 		return (byte[]) U.getReference(s, V_OFF);
 	}
 
@@ -177,4 +188,5 @@ public final class Bits {
 		}
 		return rv;
 	}
+
 }

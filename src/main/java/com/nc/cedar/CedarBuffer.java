@@ -1,6 +1,5 @@
 package com.nc.cedar;
 
-import static com.nc.cedar.Bits.u64;
 import static jdk.incubator.foreign.MemoryAccess.getByteAtOffset;
 import static jdk.incubator.foreign.MemoryAccess.getIntAtOffset;
 import static jdk.incubator.foreign.MemoryAccess.getShortAtOffset;
@@ -25,6 +24,10 @@ final class Blocks extends CedarBuffer {
 		return blocks;
 	}
 
+	static long safeOffset(long ix) {
+		return ix * UNIT;
+	}
+
 	Blocks() {
 	}
 
@@ -41,14 +44,6 @@ final class Blocks extends CedarBuffer {
 		return cap(UNIT);
 	}
 
-	int head(int ix) {
-		return head(u64(ix));
-	}
-
-	void head(int ix, int value) {
-		head(u64(ix), value);
-	}
-
 	int head(long ix) {
 		return getIntAtOffset(buffer, safeOffset(ix) + 16);
 	}
@@ -57,21 +52,9 @@ final class Blocks extends CedarBuffer {
 		setIntAtOffset(buffer, safeOffset(ix) + 16, value);
 	}
 
-	void incrementNum(int ix, int inc) {
-		incrementNum(u64(ix), inc);
-	}
-
 	void incrementNum(long ix, int inc) {
 		var curr = num(ix);
 		num(ix, (short) (curr + inc));
-	}
-
-	int next(int ix) {
-		return next(u64(ix));
-	}
-
-	void next(int ix, int v) {
-		next(u64(ix), v);
 	}
 
 	int next(long ix) {
@@ -80,14 +63,6 @@ final class Blocks extends CedarBuffer {
 
 	void next(long ix, int v) {
 		setIntAtOffset(buffer, safeOffset(ix) + 4, v);
-	}
-
-	short num(int ix) {
-		return num(u64(ix));
-	}
-
-	void num(int ix, short v) {
-		num(u64(ix), v);
 	}
 
 	short num(long ix) {
@@ -100,14 +75,6 @@ final class Blocks extends CedarBuffer {
 
 	long offset() {
 		return pos * UNIT;
-	}
-
-	int prev(int ix) {
-		return prev(u64(ix));
-	}
-
-	void prev(int ix, int v) {
-		prev(u64(ix), v);
 	}
 
 	int prev(long ix) {
@@ -136,14 +103,6 @@ final class Blocks extends CedarBuffer {
 		push(0, 0, (short) 256, (short) 257, 0, 0);
 	}
 
-	short reject(int ix) {
-		return reject(u64(ix));
-	}
-
-	void reject(int ix, short v) {
-		reject(u64(ix), v);
-	}
-
 	short reject(long ix) {
 		return getShortAtOffset(buffer, safeOffset(ix) + 10);
 	}
@@ -160,10 +119,6 @@ final class Blocks extends CedarBuffer {
 
 	void resize(long newSize) {
 		super.resize(newSize, UNIT);
-	}
-
-	long safeOffset(long ix) {
-		return safeOffset(ix, UNIT);
 	}
 
 	@Override
@@ -187,14 +142,6 @@ final class Blocks extends CedarBuffer {
 		return Arrays.toString(objs);
 	}
 
-	int trial(int ix) {
-		return trial(u64(ix));
-	}
-
-	void trial(int ix, int v) {
-		trial(u64(ix), v);
-	}
-
 	int trial(long ix) {
 		return getIntAtOffset(buffer, safeOffset(ix) + 12);
 	}
@@ -211,7 +158,7 @@ final class Blocks extends CedarBuffer {
  */
 abstract class CedarBuffer {
 
-	static final boolean BOUNDS_CHECK = true;
+	static final boolean BOUNDS_CHECK = false;
 
 	static final long toOffset(long ix, long unit) {
 		return ix * unit;
@@ -347,6 +294,10 @@ final class NodeInfos extends CedarBuffer {
 		return infos;
 	}
 
+	static long safeOffset(long ix) {
+		return ix << 1;
+	}
+
 	NodeInfos() {
 	}
 
@@ -357,14 +308,6 @@ final class NodeInfos extends CedarBuffer {
 	@Override
 	long alignment() {
 		return UNIT;
-	}
-
-	byte child(int ix) {
-		return child(u64(ix));
-	}
-
-	void child(int ix, byte v) {
-		child(u64(ix), v);
 	}
 
 	byte child(long ix) {
@@ -398,14 +341,6 @@ final class NodeInfos extends CedarBuffer {
 		super.resize(newLen, UNIT);
 	}
 
-	long safeOffset(long ix) {
-		return safeOffset(ix, UNIT);
-	}
-
-	void set(int ix, byte sibling, byte child) {
-		set(u64(ix), sibling, child);
-	}
-
 	void set(long ix, byte sibling, byte child) {
 		var off = safeOffset(ix);
 		setByteAtOffset(buffer, off, sibling);
@@ -415,14 +350,6 @@ final class NodeInfos extends CedarBuffer {
 	@Override
 	public void set(MemorySegment buffer, long off) {
 		setShortAtOffset(buffer, off, (short) 0);
-	}
-
-	byte sibling(int ix) {
-		return sibling(u64(ix));
-	}
-
-	void sibling(int ix, byte v) {
-		sibling(u64(ix), v);
 	}
 
 	byte sibling(long ix) {
@@ -460,6 +387,10 @@ final class Nodes extends CedarBuffer {
 		return array;
 	}
 
+	static long safeOffset(long ix) {
+		return ix << 3;
+	}
+
 	Nodes() {
 	}
 
@@ -472,14 +403,6 @@ final class Nodes extends CedarBuffer {
 		return 8;
 	}
 
-	int base(int ix) {
-		return base(u64(ix));
-	}
-
-	void base(int ix, int v) {
-		base(u64(ix), v);
-	}
-
 	int base(long ix) {
 		return getIntAtOffset(buffer, safeOffset(ix));
 	}
@@ -488,20 +411,8 @@ final class Nodes extends CedarBuffer {
 		setIntAtOffset(buffer, safeOffset(ix), v);
 	}
 
-	int base_r(int ix) {
-		return base_r(u64(ix));
-	}
-
 	int base_r(long ix) {
 		return -(getIntAtOffset(buffer, safeOffset(ix)) + 1);
-	}
-
-	int check(int ix) {
-		return check(u64(ix));
-	}
-
-	void check(int ix, int v) {
-		check(u64(ix), v);
 	}
 
 	int check(long ix) {
@@ -542,14 +453,6 @@ final class Nodes extends CedarBuffer {
 		super.resize(newLen, UNIT);
 	}
 
-	long safeOffset(long ix) {
-		return safeOffset(ix, UNIT);
-	}
-
-	void set(int ix, int base, int check) {
-		set(u64(ix), base, check);
-	}
-
 	void set(long ix, int base, int check) {
 		var off = safeOffset(ix);
 		setIntAtOffset(buffer, off, base);
@@ -588,6 +491,10 @@ final class Rejects extends CedarBuffer {
 		return reject;
 	}
 
+	static long safeOffset(long ix) {
+		return ix << 1;
+	}
+
 	Rejects() {
 	}
 
@@ -620,10 +527,6 @@ final class Rejects extends CedarBuffer {
 		if ((pos + n) > cap(UNIT)) {
 			grow(n, UNIT);
 		}
-	}
-
-	long safeOffset(long ix) {
-		return safeOffset(ix, UNIT);
 	}
 
 	void set(long ix, short v) {

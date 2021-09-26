@@ -4,6 +4,10 @@ import static com.nc.cedar.CedarTestSupport.toMap;
 import static com.nc.cedar.CedarTestSupport.vec;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+import java.util.UUID;
+import java.util.stream.IntStream;
 
 import org.junit.Assert;
 import org.junit.FixMethodOrder;
@@ -76,6 +80,27 @@ public class CedarExtraTests extends BaseCedarTests {
 		}).distinct().count();
 
 		assertEquals(values.length, matched);
+	}
+
+	@Test
+	public void test_mass_erase_uuid() {
+		var uuids = IntStream.range(0, 10000).mapToObj(__ -> UUID.randomUUID().toString()).distinct().toArray(String[]::new);
+
+		var cedar = instantiate();
+
+		cedar.build(uuids);
+
+		for (var i = 0; i < uuids.length; i++) {
+			var key = uuids[i];
+			assertEquals(i, cedar.find(key));
+			assertEquals(i, cedar.erase(key));
+			assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & cedar.find(key)) != 0);
+		}
+
+		for (var i = 0; i < uuids.length; i++) {
+			var key = uuids[i];
+			assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & cedar.find(key)) != 0);
+		}
 	}
 
 	@Test

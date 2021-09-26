@@ -3,7 +3,6 @@ package com.nc.cedar;
 import java.io.IOException;
 import java.nio.file.Files;
 
-import org.junit.Assume;
 import org.junit.Test;
 
 public class HugeCedarTests extends BaseHugeCedarTests {
@@ -12,7 +11,7 @@ public class HugeCedarTests extends BaseHugeCedarTests {
 
 	@Test
 	public void run() throws IOException {
-		Assume.assumeTrue("This test requires -XX:MaxDirectMemorySize=4G", Bits.maxDirectMemory() >= 4L * 1024 * 1024 * 1024);
+		assumeEnoughMemory();
 
 		var cedar = instantiate();
 

@@ -58,9 +58,18 @@ Value retrieval is slightly distinct from rust's version and some additional met
 var cedar = new Cedar();
 cedar.update("foo", 0);
 
-// same as rust's exact_match_search
-Match m = cedar.get("foo"); // { value: 0, length: 3, from: 0}
+// same as C's exactMatchSearch
+Match m = cedar.match("foo"); // { value: 0, length: 3, from: 0}
+
+// if only value is required, avoids allocation
+long v = cedar.get("foo"); // 0
 ```
+
+The result of **get** is a long value contains either the associated value with the key or masks: 
+
+* NO_VALUE (1L<<32), which indicates that the key exists as prefix, but it's not a whole word
+* ABSENT (1L<<33), which indicates that the prefix does not exist
+* To get the value, test first with BaseCedar.isValue(v) and cast to int
 
 The **from** value from the match structure is a *pointer* to the internal trie structure that can be used to rebuild suffixes. In case of exact matches, the suffix is the key itself.
 
@@ -181,7 +190,9 @@ cedar.update(key_utf8,0);
 cedar.get(key_utf8);
 ```
 
-Memory allocated by Cedar starts with 256x8=2048 bytes for its backing "array" and every time it needs to reallocate it doubles the required capacity. For small tries this is not an issue, however when it becomes huge the amount
+### Footprint
+
+Memory allocated by Cedar starts with 256x8=2048 bytes for its backing "array" and every time it needs to reallocate, by default it will demand twice the current capacity. For small tries this is not an issue, however when it becomes huge the amount of memory required to updated the trie with a small amount of new keys may become unwieldy.
 
 Consider the following example for zero padded numbers (9 bytes each):
 
@@ -207,9 +218,33 @@ To cope with this, cedar can be instantiated with a reallocation cap:
 var cedar = new Cedar(4*1024*1024);
 ```
 
-If reallocation demands less than the cap (4MB), say 512 bytes, only 512 bytes will be used, otherwise up to 4MB will be used. This policy imposes a penalty for creating huge tries from scratch, but caps memory waste once it grows very large. For the [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2 keys dataset
+If reallocation demands less than the cap (4MB), say 512 bytes, only 512 bytes will be used, otherwise up to 4MB will be used. This policy imposes a penalty for creating huge tries from scratch, but caps memory waste once it grows very large. For the [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2 keys dataset (~28 million keys with average length 9.58), default reallocation will demand 1290MB of memory, whereas using a 4MB policy will result in a trie demanding 1050MB.
+
+Another option to reduce footprint is to use a **reduced** trie, which works only with ASCII. 
+
+```java
+var cedar = new ReducedCedar(); 
+```
+or
+
+```java
+var cedar = new ReducedCedar(4*1024*1024); 
+```
+
+In the same dataset, with standard reallocation policy, the reduced trie ends up using the same amount of memory, however it peaks at ~23.5 million keys and the standard trie peaks at ~18.8 million keys:
+
+<p align="center">
+<img src="https://user-images.githubusercontent.com/7014591/134908962-573cd910-77f8-4acb-a0d4-946d2ca5a90b.png"></img>
+</p>
+
+As can be seen, there's no memory payoff when using the reduced trie to load the entire dataset, but using a 4MB reallocation policy we end up with ~23.5% memory savings in comparision to the standard trie, with reduced trie peaking at 850MB (vs 1050MB):
+
+<p align="center">
+<img src="https://user-images.githubusercontent.com/7014591/134914565-5ff9561d-2352-4d31-a582-f35f12bbb65e.png"></img>
+</p>
 
 As of now, there's no true support for memory reallocation, meaning, in order to grow from 1024MB to 1028MB, first we allocate a 1028MB chunk, copy the 1GB into it and then release the buffer. This may trigger OOME or swapping when the structure grows very large.
+
 
 ### Performance
 
@@ -244,7 +279,7 @@ long find(Cedar cedar, String key) {
 }
 ```
 
-After further inspection of C benchmark code, I noticed it expects all query data to be in memory:
+After further inspection of C benchmark code, it can be seen that it expects all query data to be in memory using positional lookups to dodge memcpy:
 
 ```C
 char* data = 0;
@@ -307,7 +342,7 @@ Replacing reads from memory segments and byte arrays with Unsafe, disregarding a
 | [skew](http://web.archive.org/web/20120206015921/http://www.naskitis.com/skew1_1.bz2)  | 177.999.203 | 612.219 | 38.66 | 22.53% slower | 
 
 
-Using a sample of 64 keys on heap with average length of 11.08 (slightly larger than the dataset average which is 9.58) and running lookups in a tight loops with guaranteed 0 allocations and less granular measurements
+Using a sample of 64 keys on heap with average length of 11.08 (slightly larger than the dataset average which is 9.58) and running lookups in tight loops with guaranteed 0 allocations and less granular measurements
 
 
 ```java

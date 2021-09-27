@@ -81,28 +81,28 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 
 	final long find(Cedar cedar, byte[] key) {
 		var now = System.nanoTime();
-		var found = cedar.find(key);
+		var found = cedar.get(key);
 		query += (System.nanoTime() - now);
 		return found;
 	}
 
 	final long find(Cedar cedar, String key) {
 		var now = System.nanoTime();
-		var found = cedar.find(key);
+		var found = cedar.get(key);
 		query += (System.nanoTime() - now);
 		return found;
 	}
 
 	final long find(ReducedCedar cedar, byte[] key) {
 		var now = System.nanoTime();
-		var found = cedar.find(key);
+		var found = cedar.get(key);
 		query += (System.nanoTime() - now);
 		return found;
 	}
 
 	final long find(ReducedCedar cedar, String key) {
 		var now = System.nanoTime();
-		var found = cedar.find(key);
+		var found = cedar.get(key);
 		query += (System.nanoTime() - now);
 		return found;
 	}
@@ -110,7 +110,7 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 	final long findPreFetch(Cedar cedar, String key) {
 		var chunk = preFetch(key);
 		var now = System.nanoTime();
-		var found = cedar.find(chunk);
+		var found = cedar.get(chunk);
 		query += (System.nanoTime() - now);
 		return found;
 	}
@@ -118,7 +118,7 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 	final long findPreFetch(ReducedCedar cedar, String key) {
 		var chunk = preFetch(key);
 		var now = System.nanoTime();
-		var found = cedar.find(chunk);
+		var found = cedar.get(chunk);
 		query += (System.nanoTime() - now);
 		return found;
 	}
@@ -142,7 +142,7 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 	final String lookup(Cedar cedar, String key) {
 		findPreFetch(cedar, key);
 
-		var m = cedar.get(key);
+		var m = cedar.match(key);
 
 		var now = System.nanoTime();
 		var rv = cedar.suffix(m.from(), m.length());
@@ -152,7 +152,7 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 
 	final String lookup(ReducedCedar cedar, String key) {
 		findPreFetch(cedar, key);
-		var m = cedar.get(key);
+		var m = cedar.match(key);
 
 		var now = System.nanoTime();
 		var rv = cedar.suffix(m.from(), m.length());
@@ -163,7 +163,7 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 	final String lookupPreFetch(Cedar cedar, String key) {
 		var chunk = preFetch(key);
 		find(cedar, chunk);
-		var m = cedar.get(key);
+		var m = cedar.match(key);
 
 		var now = System.nanoTime();
 		var rv = cedar.suffix(m.from(), m.length());
@@ -174,7 +174,7 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 	final String lookupPreFetch(ReducedCedar cedar, String key) {
 		var chunk = preFetch(key);
 		find(cedar, chunk);
-		var m = cedar.get(key);
+		var m = cedar.match(key);
 
 		var now = System.nanoTime();
 		var rv = cedar.suffix(m.from(), m.length());
@@ -195,7 +195,7 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 			range.forEach(v -> {
 				var key = str(v);
 				var now = System.nanoTime();
-				var found = c.find(key);
+				var found = c.get(key);
 				query += (System.nanoTime() - now);
 				Assert.assertEquals(v, found);
 			});
@@ -203,7 +203,7 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 			range.forEach(v -> {
 				var key = str(v);
 				var now = System.nanoTime();
-				var found = r.find(key);
+				var found = r.get(key);
 				query += (System.nanoTime() - now);
 				Assert.assertEquals(v, found);
 			});

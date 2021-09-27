@@ -174,7 +174,7 @@ public final class ReducedCedar extends BaseCedar {
 	}
 
 	public ReducedCedar(int realloc) {
-		this(true, 0);
+		this(true, realloc);
 	}
 
 	private ReducedCedar(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, int flags) {
@@ -254,8 +254,13 @@ public final class ReducedCedar extends BaseCedar {
 
 	@Override
 	public long erase(byte[] key) {
+		return erase(key, 0, key.length);
+	}
+
+	@Override
+	public long erase(byte[] key, int start, int end) {
 		var from = new Ptr();
-		var r = find(key, from);
+		var r = find(key, from, start, end);
 
 		if ((r & ABSENT_OR_NO_VALUE) == 0) {
 			erase(from.v);
@@ -295,50 +300,6 @@ public final class ReducedCedar extends BaseCedar {
 	@Override
 	public long erase(String key) {
 		return erase(utf8(key));
-	}
-
-	@Override
-	public long find(byte[] key) {
-		return find(key, 0, key.length);
-	}
-
-	@Override
-	public long find(byte[] key, int pos, int end) {
-		var from = 0L;
-		var to = 0L;
-		var array = this.array;
-		// hoist in local, then perform a single heap write post-loop
-		while (pos < key.length) {
-			// reduced-trie
-			if (array.base(from) >= 0) {
-				break;
-			}
-
-			to = u64(array.base_r(from) ^ u32(key[pos]));
-			if (array.check(to) != i32(from)) {
-				return ABSENT;
-			}
-
-			from = to;
-			pos++;
-		}
-
-		// reduced-trie
-		if (array.base(from) >= 0) {
-			if (pos == key.length) {
-				return array.base(from);
-			} else {
-				return ABSENT;
-			}
-		}
-
-		var b = array.base_r(from);
-		var check = array.check(b);
-		if (check != i32(from)) {
-			return NO_VALUE;
-		} else {
-			return array.base(b);
-		}
 	}
 
 	long find(byte[] key, Ptr from) {
@@ -388,11 +349,6 @@ public final class ReducedCedar extends BaseCedar {
 		} else {
 			return array.base(b);
 		}
-	}
-
-	@Override
-	public long find(String s) {
-		return find(utf8(s));
 	}
 
 	private int find_place() {
@@ -499,10 +455,68 @@ public final class ReducedCedar extends BaseCedar {
 	}
 
 	@Override
-	public Match get(byte[] utf8) {
+	public long get(byte[] key) {
+		return get(key, 0, key.length);
+	}
+
+	@Override
+	public long get(byte[] key, int pos, int end) {
+		var from = 0L;
+		var to = 0L;
+		var array = this.array;
+		// hoist in local, then perform a single heap write post-loop
+		while (pos < key.length) {
+			// reduced-trie
+			if (array.base(from) >= 0) {
+				break;
+			}
+
+			to = u64(array.base_r(from) ^ u32(key[pos]));
+			if (array.check(to) != i32(from)) {
+				return ABSENT;
+			}
+
+			from = to;
+			pos++;
+		}
+
+		// reduced-trie
+		if (array.base(from) >= 0) {
+			if (pos == key.length) {
+				return array.base(from);
+			} else {
+				return ABSENT;
+			}
+		}
+
+		var b = array.base_r(from);
+		var check = array.check(b);
+		if (check != i32(from)) {
+			return NO_VALUE;
+		} else {
+			return array.base(b);
+		}
+	}
+
+	@Override
+	public long get(String s) {
+		return get(utf8(s));
+	}
+
+	public Stream<String> keys() {
+		return predict("").map(this::suffix);
+	}
+
+	@Override
+	public Match match(byte[] utf8) {
+		return match(utf8, 0, utf8.length);
+	}
+
+	@Override
+	public Match match(byte[] utf8, int start, int end) {
 		var from = new Ptr();
 
-		var r = find(utf8, from);
+		var r = find(utf8, from, start, end);
 
 		if ((r & ABSENT_OR_NO_VALUE) != 0) {
 			return null;
@@ -512,12 +526,8 @@ public final class ReducedCedar extends BaseCedar {
 	}
 
 	@Override
-	public Match get(String str) {
-		return get(utf8(str));
-	}
-
-	public Stream<String> keys() {
-		return predict("").map(this::suffix);
+	public Match match(String str) {
+		return match(utf8(str));
 	}
 
 	void next(long from, long p, long root, Scratch scratch) {

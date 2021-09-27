@@ -83,10 +83,6 @@ public class CedarWoodTests extends BaseCedarTests {
 		var key_values = toMap(dict);
 		var cedar = instantiate();
 
-		if (cedar.isReduced()) {
-			return;
-		}
-
 		cedar.build(key_values);
 
 		var result = cedar.withCommonPrefix("abcdefg").mapToInt(Match::value).toArray();
@@ -110,18 +106,14 @@ public class CedarWoodTests extends BaseCedarTests {
 
 		var cedar = instantiate();
 
-		if (cedar.isReduced()) {
-			return;
-		}
-
 		var dict = vec("些许端", "些須", "些须", "亜", "亝", "亞", "亞", "亞丁", "亞丁港");
 		var key_values = tuples(dict);
 		cedar.build(key_values);
 
-		assertEquals(6, cedar.get("亞").value());
-		assertEquals(8, cedar.get("亞丁港").value());
-		assertEquals(4, cedar.get("亝").value());
-		assertEquals(1, cedar.get("些須").value());
+		assertEquals(6, cedar.match("亞").value());
+		assertEquals(8, cedar.match("亞丁港").value());
+		assertEquals(4, cedar.match("亝").value());
+		assertEquals(1, cedar.match("些須").value());
 	}
 
 	@Test
@@ -131,24 +123,24 @@ public class CedarWoodTests extends BaseCedarTests {
 		var cedar = instantiate();
 		cedar.build(key_values);
 
-		assertEquals(0, cedar.get("a").value());
-		assertEquals(1, cedar.get("ab").value());
-		assertEquals(2, cedar.get("abc").value());
+		assertEquals(0, cedar.match("a").value());
+		assertEquals(1, cedar.match("ab").value());
+		assertEquals(2, cedar.match("abc").value());
 
 		cedar.erase("abc");
-		assertEquals(0, cedar.get("a").value());
-		assertEquals(1, cedar.get("ab").value());
-		assertNull(cedar.get("abc"));
+		assertEquals(0, cedar.match("a").value());
+		assertEquals(1, cedar.match("ab").value());
+		assertNull(cedar.match("abc"));
 
 		cedar.erase("ab");
-		assertEquals(0, cedar.get("a").value());
-		assertNull(cedar.get("ab"));
-		assertNull(cedar.get("abc"));
+		assertEquals(0, cedar.match("a").value());
+		assertNull(cedar.match("ab"));
+		assertNull(cedar.match("abc"));
 
 		cedar.erase("a");
-		assertNull(cedar.get("a"));
-		assertNull(cedar.get("ab"));
-		assertNull(cedar.get("abc"));
+		assertNull(cedar.match("a"));
+		assertNull(cedar.match("ab"));
+		assertNull(cedar.match("abc"));
 	}
 
 	@Test
@@ -158,7 +150,7 @@ public class CedarWoodTests extends BaseCedarTests {
 		var cedar = instantiate();
 		cedar.build(key_values);
 
-		var result = cedar.get("abc");
+		var result = cedar.match("abc");
 		assertEquals(2, result.value());
 	}
 
@@ -169,29 +161,29 @@ public class CedarWoodTests extends BaseCedarTests {
 		var cedar = instantiate();
 		cedar.build(key_values);
 
-		var result = cedar.get("a");
+		var result = cedar.match("a");
 		assertEquals(0, result.value());
 
-		result = cedar.get("ab");
+		result = cedar.match("ab");
 		assertNull(result);
 
 		cedar.update("ab", 1);
-		result = cedar.get("ab");
+		result = cedar.match("ab");
 		assertEquals(1, result.value());
 
 		cedar.erase("ab");
-		result = cedar.get("ab");
+		result = cedar.match("ab");
 		assertNull(result);
 
 		cedar.update("abc", 2);
-		result = cedar.get("abc");
+		result = cedar.match("abc");
 		assertEquals(2, result.value());
 
 		cedar.erase("abc");
-		result = cedar.get("abc");
+		result = cedar.match("abc");
 		assertNull(result);
 
-		result = cedar.get("a");
+		result = cedar.match("a");
 		assertEquals(0, result.value());
 	}
 
@@ -212,9 +204,9 @@ public class CedarWoodTests extends BaseCedarTests {
 
 		for (var i = 0; i < dict.size(); i++) {
 			var s = dict.get(i);
-			assertEquals(i, cedar.get(s).value());
+			assertEquals(i, cedar.match(s).value());
 			cedar.erase(s);
-			assertNull(cedar.get(s));
+			assertNull(cedar.match(s));
 		}
 	}
 
@@ -234,7 +226,7 @@ public class CedarWoodTests extends BaseCedarTests {
 		cedar.build(key_values);
 
 		for (var i = 0; i < max; i++) {
-			assertEquals(i, cedar.get(dict.get(i)).value());
+			assertEquals(i, cedar.match(dict.get(i)).value());
 		}
 	}
 
@@ -256,7 +248,7 @@ public class CedarWoodTests extends BaseCedarTests {
 
 		for (var i = 0; i < max; i++) {
 			var s = dict.get(i);
-			assertEquals(i, cedar.get(s).value());
+			assertEquals(i, cedar.match(s).value());
 		}
 	}
 
@@ -268,10 +260,6 @@ public class CedarWoodTests extends BaseCedarTests {
 
 		var key_values = toMap(dict);
 		var cedar = instantiate();
-
-		if (cedar.isReduced()) {
-			return;
-		}
 
 		cedar.build(key_values);
 
@@ -301,11 +289,11 @@ public class CedarWoodTests extends BaseCedarTests {
 
 		cedar.update("abcd", 3);
 
-		assertEquals(0, cedar.get("a").value());
-		assertEquals(1, cedar.get("ab").value());
-		assertEquals(2, cedar.get("abc").value());
-		assertEquals(3, cedar.get("abcd").value());
-		assertNull(cedar.get("abcde"));
+		assertEquals(0, cedar.match("a").value());
+		assertEquals(1, cedar.match("ab").value());
+		assertEquals(2, cedar.match("abc").value());
+		assertEquals(3, cedar.match("abcd").value());
+		assertNull(cedar.match("abcde"));
 
 		dict = vec("a", "ab", "abc");
 		key_values = toMap(dict);
@@ -316,11 +304,11 @@ public class CedarWoodTests extends BaseCedarTests {
 		cedar.update("badge", 3);
 		cedar.update("baby", 4);
 
-		assertEquals(1, cedar.get("bachelor").value());
-		assertEquals(2, cedar.get("jar").value());
-		assertEquals(3, cedar.get("badge").value());
-		assertEquals(4, cedar.get("baby").value());
-		assertNull(cedar.get("abcde"));
+		assertEquals(1, cedar.match("bachelor").value());
+		assertEquals(2, cedar.match("jar").value());
+		assertEquals(3, cedar.match("badge").value());
+		assertEquals(4, cedar.match("baby").value());
+		assertNull(cedar.match("abcde"));
 
 		dict = vec("a", "ab", "abc");
 		key_values = toMap(dict);
@@ -333,11 +321,11 @@ public class CedarWoodTests extends BaseCedarTests {
 		cedar.update("中华人民", 3);
 		cedar.update("中华人民共和国", 4);
 
-		assertEquals(1, cedar.get("中").value());
-		assertEquals(2, cedar.get("中华").value());
-		assertEquals(3, cedar.get("中华人民").value());
-		assertEquals(4, cedar.get("中华人民共和国").value());
-		assertNull(cedar.get("abcde"));
+		assertEquals(1, cedar.match("中").value());
+		assertEquals(2, cedar.match("中华").value());
+		assertEquals(3, cedar.match("中华人民").value());
+		assertEquals(4, cedar.match("中华人民共和国").value());
+		assertNull(cedar.match("abcde"));
 	}
 
 }

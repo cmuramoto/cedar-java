@@ -73,13 +73,13 @@ public class CedarSerializationTests extends BaseCedarTests {
 
 	private void run(Cedar cedar, String[] dict) {
 		for (var i = 0; i < dict.length; i++) {
-			assertEquals(i, cedar.get(dict[i]).value());
+			assertEquals(i, cedar.match(dict[i]).value());
 		}
 	}
 
 	private void run(ReducedCedar cedar, String[] dict) {
 		for (var i = 0; i < dict.length; i++) {
-			assertEquals(i, cedar.find(dict[i]));
+			assertEquals(i, cedar.get(dict[i]));
 		}
 	}
 

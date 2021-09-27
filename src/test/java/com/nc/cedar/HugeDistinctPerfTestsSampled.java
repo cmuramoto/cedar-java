@@ -61,7 +61,7 @@ public class HugeDistinctPerfTestsSampled extends BaseHugeCedarTests {
 
 		if (cedar instanceof Cedar c) {
 			lines.forEach(s -> {
-				var prev = c.find(s);
+				var prev = c.get(s);
 				if ((prev & BaseCedar.ABSENT_OR_NO_VALUE) != 0) {
 					int v = ids++;
 					if (sink.size() < MAX_SAMPLES && s.length() >= MIN_LEN) {
@@ -70,14 +70,14 @@ public class HugeDistinctPerfTestsSampled extends BaseHugeCedarTests {
 					sum += s.length();
 					store(c, s, v);
 				} else {
-					var match = c.get(s);
+					var match = c.match(s);
 					error(prev, c.suffix(match.from(), match.length()), s);
 				}
 			});
 
 		} else if (cedar instanceof ReducedCedar c) {
 			lines.forEach(s -> {
-				var prev = c.find(s);
+				var prev = c.get(s);
 				if ((prev & BaseCedar.ABSENT_OR_NO_VALUE) != 0) {
 					int v = ids++;
 
@@ -87,7 +87,7 @@ public class HugeDistinctPerfTestsSampled extends BaseHugeCedarTests {
 					sum += s.length();
 					store(c, s, v);
 				} else {
-					var match = c.get(s);
+					var match = c.match(s);
 					error(prev, c.suffix(match.from(), match.length()), s);
 				}
 			});
@@ -120,7 +120,7 @@ public class HugeDistinctPerfTestsSampled extends BaseHugeCedarTests {
 		for (var i = 0; i < ops; i++) {
 			var now = System.nanoTime();
 			for (var key : samples) {
-				assertTrue((c.find(key) & BaseCedar.ABSENT_OR_NO_VALUE) == 0);
+				assertTrue((c.get(key) & BaseCedar.ABSENT_OR_NO_VALUE) == 0);
 			}
 			query += (System.nanoTime() - now);
 			shuffle(samples);
@@ -130,10 +130,11 @@ public class HugeDistinctPerfTestsSampled extends BaseHugeCedarTests {
 	private void run(ReducedCedar c) {
 		var samples = this.samples;
 		var ops = ids;
+		query = 0;
 		for (var i = 0; i < ops; i++) {
 			var now = System.nanoTime();
 			for (var key : samples) {
-				assertTrue((c.find(key) & BaseCedar.ABSENT_OR_NO_VALUE) == 0);
+				assertTrue((c.get(key) & BaseCedar.ABSENT_OR_NO_VALUE) == 0);
 			}
 			this.query += (System.nanoTime() - now);
 			shuffle(samples);

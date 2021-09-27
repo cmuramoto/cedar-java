@@ -35,7 +35,7 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		T allocate(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, int flags);
 	}
 
-	static final int REALLOC_CAP = Integer.getInteger("Cedar.REALLOC_CAP", 0);
+	static final int REALLOC_CAP = Integer.getInteger("Cedar.REALLOC_CAP", 4 * 1024 * 1024);
 
 	static final int BLOCK_TYPE_CLOSED = 0;
 	static final int BLOCK_TYPE_OPEN = 1;
@@ -331,15 +331,23 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	}
 
 	/**
-	 * Marks the key as absent in the trie.
+	 * Delegates to {@link BaseCedar#erase(byte[], int, int)} with start=0 and end=key.length
+	 */
+	public abstract long erase(byte[] key);
+
+	/**
+	 * /** Marks the key as absent in the trie.
 	 *
 	 * @param key
 	 *            - utf8 encoded string
-	 * @return - The value associated with {@link BaseCedar#find(byte[])}. Erase has no side effect
-	 *         if the reported value is either {@link BaseCedar#NO_VALUE} or
-	 *         {@link BaseCedar#ABSENT}.
+	 * @param start
+	 *            - base offset
+	 * @param end
+	 *            - end offset
+	 * @return The value associated with {@link BaseCedar#get(byte[])}. Erase has no side effect if
+	 *         the reported value is either {@link BaseCedar#NO_VALUE} or {@link BaseCedar#ABSENT}.
 	 */
-	public abstract long erase(byte[] key);
+	public abstract long erase(byte[] key, int start, int end);
 
 	/**
 	 * @param key
@@ -349,9 +357,9 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 
 	/**
 	 * @param key
-	 * @return {@link BaseCedar#find(byte[], int, int)}, with start=0 and end=key.length
+	 * @return {@link BaseCedar#get(byte[], int, int)}, with start=0 and end=key.length
 	 */
-	public abstract long find(byte[] key);
+	public abstract long get(byte[] key);
 
 	/**
 	 * Find's the associated value with the slice [start,end) of the key. Unlike rust, we use long
@@ -366,38 +374,17 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	 *         {@link BaseCedar#ABSENT} if there's a single byte that does not match the trie at any
 	 *         level (e.g. "banana" exists and query is "badana").
 	 */
-	public abstract long find(byte[] key, int start, int end);
+	public abstract long get(byte[] key, int start, int end);
 
 	/**
-	 * Delegates to {@link BaseCedar#find(byte[])}, by converting the key using
+	 * Delegates to {@link BaseCedar#get(byte[])}, by converting the key using
 	 * {@link Bits#utf8(String)}. This method is not final because we want the call to
-	 * {@link BaseCedar#find(byte[])} to be placed in the respective implementation's call sites.
+	 * {@link BaseCedar#get(byte[])} to be placed in the respective implementation's call sites.
 	 *
 	 * @param key
 	 * @return
 	 */
-	public abstract long find(String key);
-
-	/**
-	 * Exact lookup.
-	 *
-	 * @param key
-	 *            - utf8 encoded String.
-	 * @return - Returns a {@link Match}, if the key exists in the dictionary otherwise null. This
-	 *         method is meant to be used instead of find when the key needs to be rebuilt by
-	 *         calling {@link BaseCedar#suffix(Match)}.
-	 */
-	public abstract Match get(byte[] key);
-
-	/**
-	 * Delegates to {@link BaseCedar#get(byte[])}, by converting the key using
-	 * {@link Bits#utf8(String)}.
-	 *
-	 * @param key
-	 *            - string
-	 * @return - {@link BaseCedar#get(byte[]) }
-	 */
-	public abstract Match get(String key);
+	public abstract long get(String key);
 
 	final int get_head(int type) {
 		return switch (type) {
@@ -418,6 +405,36 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	public final boolean isReduced() {
 		return this instanceof ReducedCedar;
 	}
+
+	/**
+	 * Delegates to {@link BaseCedar#match(byte[], int, int)}} with start=0 and end = key.length
+	 *
+	 * @param key
+	 */
+	public abstract Match match(byte[] key);
+
+	/**
+	 * @param key
+	 *            - utf8 encoded string
+	 * @param start
+	 *            - base offset
+	 * @param end
+	 *            - end offset
+	 * @return - Returns a {@link Match}, if the key exists in the dictionary otherwise null. This
+	 *         method is meant to be used instead of find when the key needs to be rebuilt by
+	 *         calling {@link BaseCedar#suffix(Match)}.
+	 */
+	public abstract Match match(byte[] key, int start, int end);
+
+	/**
+	 * Delegates to {@link BaseCedar#match(byte[])}, by converting the key using
+	 * {@link Bits#utf8(String)}.
+	 *
+	 * @param key
+	 *            - string
+	 * @return - {@link BaseCedar#match(byte[]) }
+	 */
+	public abstract Match match(String key);
 
 	final boolean ordered() {
 		return (flags & 0x1) == 0;

@@ -51,22 +51,22 @@ public class HugeDistinctPerfTestsSelfStream extends BaseHugeCedarTests {
 
 		if (cedar instanceof Cedar c) {
 			lines.forEach(s -> {
-				var prev = c.find(s);
+				var prev = c.get(s);
 				if ((prev & BaseCedar.ABSENT_OR_NO_VALUE) != 0) {
 					store(c, s, ids++);
 				} else {
-					var match = c.get(s);
+					var match = c.match(s);
 					error(prev, c.suffix(match.from(), match.length()), s);
 				}
 			});
 
 		} else if (cedar instanceof ReducedCedar c) {
 			lines.forEach(s -> {
-				var prev = c.find(s);
+				var prev = c.get(s);
 				if ((prev & BaseCedar.ABSENT_OR_NO_VALUE) != 0) {
 					store(c, s, ids++);
 				} else {
-					var match = c.get(s);
+					var match = c.match(s);
 					error(prev, c.suffix(match.from(), match.length()), s);
 				}
 			});

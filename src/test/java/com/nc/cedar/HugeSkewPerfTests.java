@@ -41,7 +41,7 @@ public class HugeSkewPerfTests extends BaseHugeCedarTests {
 	private void load(Stream<String> lines) {
 		if (cedar instanceof Cedar c) {
 			lines.forEach(s -> {
-				var prev = c.find(s);
+				var prev = c.get(s);
 				if ((prev & BaseCedar.ABSENT_OR_NO_VALUE) != 0) {
 					distinct++;
 				}
@@ -49,7 +49,7 @@ public class HugeSkewPerfTests extends BaseHugeCedarTests {
 			});
 		} else if (cedar instanceof ReducedCedar c) {
 			lines.forEach(s -> {
-				var prev = c.find(s);
+				var prev = c.get(s);
 				if ((prev & BaseCedar.ABSENT_OR_NO_VALUE) != 0) {
 					distinct++;
 				}

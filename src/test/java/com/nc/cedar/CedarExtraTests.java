@@ -47,8 +47,8 @@ public class CedarExtraTests extends BaseCedarTests {
 		Assert.assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & c.erase("A")) != 0);
 		Assert.assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & c.erase("A")) != 0);
 
-		Assert.assertEquals(0, c.find("AA"));
-		Assert.assertEquals(1, c.find("AB"));
+		Assert.assertEquals(0, c.get("AA"));
+		Assert.assertEquals(1, c.get("AB"));
 
 		Assert.assertEquals(0, c.erase("AA"));
 		Assert.assertEquals(1, c.erase("AB"));
@@ -92,14 +92,14 @@ public class CedarExtraTests extends BaseCedarTests {
 
 		for (var i = 0; i < uuids.length; i++) {
 			var key = uuids[i];
-			assertEquals(i, cedar.find(key));
+			assertEquals(i, cedar.get(key));
 			assertEquals(i, cedar.erase(key));
-			assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & cedar.find(key)) != 0);
+			assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & cedar.get(key)) != 0);
 		}
 
 		for (var i = 0; i < uuids.length; i++) {
 			var key = uuids[i];
-			assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & cedar.find(key)) != 0);
+			assertTrue((BaseCedar.ABSENT_OR_NO_VALUE & cedar.get(key)) != 0);
 		}
 	}
 

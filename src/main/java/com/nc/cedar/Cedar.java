@@ -1,10 +1,12 @@
 package com.nc.cedar;
 
+import static com.nc.cedar.Bits.U;
 import static com.nc.cedar.Bits.UTF8;
 import static com.nc.cedar.Bits.i32;
 import static com.nc.cedar.Bits.u32;
 import static com.nc.cedar.Bits.u64;
 import static com.nc.cedar.Bits.utf8;
+import static jdk.internal.misc.Unsafe.ARRAY_BYTE_BASE_OFFSET;
 
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -248,8 +250,13 @@ public final class Cedar extends BaseCedar {
 
 	@Override
 	public long erase(byte[] key) {
+		return erase(key, 0, key.length);
+	}
+
+	@Override
+	public long erase(byte[] key, int start, int end) {
 		var from = new Ptr();
-		var r = find(key, from);
+		var r = find(key, from, start, end);
 
 		if ((r & ABSENT_OR_NO_VALUE) == 0) {
 			erase(from.v);
@@ -287,37 +294,6 @@ public final class Cedar extends BaseCedar {
 		return erase(utf8(key));
 	}
 
-	@Override
-	public long find(byte[] key) {
-		return find(key, 0, key.length);
-	}
-
-	@Override
-	public long find(byte[] key, int pos, int end) {
-		var from = 0L;
-		var to = 0L;
-		var array = this.array;
-		// hoist in local, then perform a single heap write post-loop
-
-		while (pos < end) {
-			to = u64(array.base(from) ^ u32(key[pos]));
-			if (array.check(to) != i32(from)) {
-				return ABSENT;
-			}
-
-			from = to;
-			pos++;
-		}
-
-		var b = array.base(from);
-		var check = array.check(b);
-		if (check != i32(from)) {
-			return NO_VALUE;
-		} else {
-			return array.base(b);
-		}
-	}
-
 	long find(byte[] key, Ptr from) {
 		return find(key, from, 0, key.length);
 	}
@@ -349,11 +325,6 @@ public final class Cedar extends BaseCedar {
 		} else {
 			return array.base(b);
 		}
-	}
-
-	@Override
-	public long find(String s) {
-		return find(utf8(s));
 	}
 
 	private int find_place() {
@@ -460,10 +431,54 @@ public final class Cedar extends BaseCedar {
 	}
 
 	@Override
-	public Match get(byte[] key) {
+	public long get(byte[] key) {
+		return get(key, 0, key.length);
+	}
+
+	@Override
+	public long get(byte[] key, int pos, int end) {
+		var from = 0L;
+		var to = 0L;
+		var array = this.array;
+
+		while (pos < end) {
+			to = u64(array.base(from) ^ u32(U.getByte(key, ARRAY_BYTE_BASE_OFFSET + pos)));
+			if (array.check(to) != i32(from)) {
+				return ABSENT;
+			}
+
+			from = to;
+			pos++;
+		}
+
+		var b = array.base(from);
+		var check = array.check(b);
+		if (check != i32(from)) {
+			return NO_VALUE;
+		} else {
+			return array.base(b);
+		}
+	}
+
+	@Override
+	public long get(String s) {
+		return get(utf8(s));
+	}
+
+	public Stream<String> keys() {
+		return predict("").map(this::suffix);
+	}
+
+	@Override
+	public Match match(byte[] key) {
+		return match(key, 0, key.length);
+	}
+
+	@Override
+	public Match match(byte[] key, int start, int end) {
 		var from = new Ptr();
 
-		var r = find(key, from);
+		var r = find(key, from, 0, end);
 
 		if ((r & ABSENT_OR_NO_VALUE) != 0) {
 			return null;
@@ -473,12 +488,8 @@ public final class Cedar extends BaseCedar {
 	}
 
 	@Override
-	public Match get(String str) {
-		return get(utf8(str));
-	}
-
-	public Stream<String> keys() {
-		return predict("").map(this::suffix);
+	public Match match(String str) {
+		return match(utf8(str));
 	}
 
 	void next(long from, long p, long root, Scratch scratch) {

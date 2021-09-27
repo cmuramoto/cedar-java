@@ -48,22 +48,34 @@ public class HugeDistinctPerfTests extends BaseHugeCedarTests {
 	void load(Stream<String> lines) {
 		if (cedar instanceof Cedar c) {
 			lines.forEach(s -> {
-				var prev = c.find(s);
+				var prev = c.get(s);
 				if ((prev & BaseCedar.ABSENT_OR_NO_VALUE) != 0) {
+					double before = c.imageSize();
 					store(c, s, ids++);
+					double after = c.imageSize();
+
+					if (before != after) {
+						System.out.printf("%d\t%.2f\t%.2f\n", ids, before / 1024 / 1024, after / 1024 / 1024);
+					}
+
 				} else {
-					var match = c.get(s);
+					var match = c.match(s);
 					error(prev, c.suffix(match.from(), match.length()), s);
 				}
 			});
 
 		} else if (cedar instanceof ReducedCedar c) {
 			lines.forEach(s -> {
-				var prev = c.find(s);
+				var prev = c.get(s);
 				if ((prev & BaseCedar.ABSENT_OR_NO_VALUE) != 0) {
+					double before = c.imageSize();
 					store(c, s, ids++);
+					double after = c.imageSize();
+					if (before != after) {
+						System.out.printf("%d\t%.2f\t%.2f\n", ids, before / 1024 / 1024, after / 1024 / 1024);
+					}
 				} else {
-					var match = c.get(s);
+					var match = c.match(s);
 					error(prev, c.suffix(match.from(), match.length()), s);
 				}
 			});

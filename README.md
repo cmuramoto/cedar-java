@@ -762,7 +762,7 @@ E.g., to fetch the 'check' field from memory (U.getInt(addr + (to << 3) + 4) -> 
   
   0x00007f1f595e0f15:   movslq 0x4(%rdi),%r13
 
-  0x00007f1f595e0f19:   cmp    %r8,%r13 // if (U.getInt(addr + (to << 3) + 4) != from) {...}
+  0x00007f1f595e0f19:   cmp    %r8,%r13 ;if (U.getInt(addr + (to << 3) + 4) != from) {...}
 
 ```
 
@@ -774,12 +774,12 @@ vs 1 + 1 instruction from C code:
   54:	49 63 12             	movslq (%r10),%rdx
   57:	49 8d 14 d1          	lea    (%r9,%rdx,8),%rdx
   
-  5b:	39 42 04             	cmp    %eax,0x4(%rdx)  // if (_array[to].check != static_cast <int> (from)) { ... }
+  5b:	39 42 04             	cmp    %eax,0x4(%rdx)  ;if (_array[to].check != static_cast <int> (from)) { ... }
 ```
 
 Changing the code a bit to
 
-```
+```java
 long get(long base, int pos, int end) {
   var from = 0L;
   var to = 0L;

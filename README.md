@@ -752,7 +752,7 @@ Compiled method (c2)   45518  355             com.nc.cedar.Cedar::get (138 bytes
 
 We can see why it's nearly impossible to match C. Even with the amazing amount of inlining performed by C2, with 0 function calls in the hot path, the code (discarding deoptimization traps) is about 4 times larger than the same C code.
 
-E.g., to fetch the 'check' field from memory (U.getInt(addr + (to << 3) + 4) -> array[to].check) Java needs 4 instructions:
+E.g., to fetch the 'check' field from memory (U.getInt(addr + (to << 3) + 4) -> array[to].check) Java needs 4 instructions to load the check field plus one to sign extend and store it in r13:
 
 ```assembly
   0x00007f1f595e0f08:   mov    %rdx,%r11
@@ -762,9 +762,11 @@ E.g., to fetch the 'check' field from memory (U.getInt(addr + (to << 3) + 4) -> 
   
   0x00007f1f595e0f15:   movslq 0x4(%rdi),%r13
 
-  0x00007f1f595e0f19:   cmp    %r8,%r13
+  0x00007f1f595e0f19:   cmp    %r8,%r13 // if (U.getInt(addr + (to << 3) + 4) != from) {...}
 
 ```
+
+vs 1 + 1 instruction from C code:
 
 ```assembly
   50:	4d 8d 14 c1          	lea    (%r9,%rax,8),%r10
@@ -772,7 +774,7 @@ E.g., to fetch the 'check' field from memory (U.getInt(addr + (to << 3) + 4) -> 
   54:	49 63 12             	movslq (%r10),%rdx
   57:	49 8d 14 d1          	lea    (%r9,%rdx,8),%rdx
   
-  5b:	39 42 04             	cmp    %eax,0x4(%rdx)  
+  5b:	39 42 04             	cmp    %eax,0x4(%rdx)  // if (_array[to].check != static_cast <int> (from)) { ... }
 ```
 
 Changing the code a bit to

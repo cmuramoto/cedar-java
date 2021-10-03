@@ -750,15 +750,16 @@ Compiled method (c2)   45518  355             com.nc.cedar.Cedar::get (138 bytes
 --------------------------------------------------------------------------------
 ```
 
-We can see why it's nearly impossible to match C:
+We can see why it's nearly impossible to match C. Even with the amazing amount of inlining performed by C2, with 0 function calls in the hot path, the code (discarding deoptimization traps) is about 4 times larger than the same C code.
 
-E.g., to fetch the 'check' field from memory (U.getInt(addr + (to << 3) + 4) -> array[to].check) Java needs 4 instructions and another int->long sign extended conversion:
+E.g., to fetch the 'check' field from memory (U.getInt(addr + (to << 3) + 4) -> array[to].check) Java needs 4 instructions:
 
 ```assembly
   0x00007f1f595e0f08:   mov    %rdx,%r11
   0x00007f1f595e0f0b:   shl    $0x3,%r11
   0x00007f1f595e0f0f:   add    %rbx,%r11
   0x00007f1f595e0f12:   mov    %r11,%rdi
+  
   0x00007f1f595e0f15:   movslq 0x4(%rdi),%r13
 
   0x00007f1f595e0f19:   cmp    %r8,%r13
@@ -767,6 +768,7 @@ E.g., to fetch the 'check' field from memory (U.getInt(addr + (to << 3) + 4) -> 
 
 ```assembly
   50:	4d 8d 14 c1          	lea    (%r9,%rax,8),%r10
+  
   54:	49 63 12             	movslq (%r10),%rdx
   57:	49 8d 14 d1          	lea    (%r9,%rdx,8),%rdx
   
@@ -812,7 +814,7 @@ We can get rid of one instruction:
   0x00007f69ac2e7519:   cmp    %r8,%r13
 ```
 
-Azul's falcon compiler generates a more compact code:
+Azul's Falcon compiler generates more compact code,
 
 ```assembly
 Disassembling com.nc.cedar.Cedar::get:

@@ -334,14 +334,7 @@ void benchLookup(Cedar cedar, byte[] data) {
 }
 ```
 
-Replacing reads from memory segments and byte arrays with Unsafe, disregarding any bounds checks, we end up with:
-
-| Dataset  | #keys| #distinct | ns/op(C2) | % vs C | ns/op(Falcon) | % vs C |
-| --- | --- | --- | --- | --- | --- | --- |
-| [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2)  | 28.772.169 | 28.772.169| 280.57 | 20.11% slower | 269.23 | 13.09% slower | 
-| [skew](http://web.archive.org/web/20120206015921/http://www.naskitis.com/skew1_1.bz2)  | 177.999.203 | 612.219 | 38.66 | 22.53% slower | 38.66 | 22.53% slower | 35.33 | 10.69% slower |
-
-To get close to C performance, the code used was:
+In order to attempt to get closer to C++ performance, the lookup code used was:
 
 ```java
 long get(long base, int pos, int end) {
@@ -816,7 +809,7 @@ We can get rid of one instruction:
   0x00007f69ac2e7519:   cmp    %r8,%r13
 ```
 
-Azul's Falcon compiler generates more compact code,
+In order to test Azul's claims about [Falcon JIT Compiler](https://www.azul.com/products/components/falcon-jit-compiler/) being faster than C2, we adapted the code and run the same benchmark. Indeed the generated code is about half the size of C2:
 
 ```assembly
 Disassembling com.nc.cedar.Cedar::get:
@@ -828,7 +821,7 @@ Disassembling com.nc.cedar.Cedar::get:
 0x3002aa71: 75 6f                             jne    111                            ; 0x3002aae2
 0x3002aa73: 48 8b 46 30                       movq    48(%rsi), %rax                
 0x3002aa77: 48 bf 48 00 f8 2f 00 00 00 00     movabsq    $804782152, %rdi           ; 0x2ff80048 = 
-                                                                             ; 804782152 = clearable_gc_phase_trap_mask
+                                                                                    ; 804782152 = clearable_gc_phase_trap_mask
 0x3002aa81: 48 85 07                          testq    %rax, (%rdi)                 
 0x3002aa84: 75 6a                             jne    106                            ; 0x3002aaf0
 0x3002aa86: 4c 8b 50 08                       movq    8(%rax), %r10                 
@@ -878,7 +871,14 @@ Disassembling com.nc.cedar.Cedar::get:
 -----------
 ```
 
-and is in fact, slightly faster than C2.
+and is in fact, slightly faster, but still no match to C++.
+
+In summary, replacing reads from memory segments and byte arrays with Unsafe, disregarding any bounds checks, we end up with:
+
+| Dataset  | #keys| #distinct | ns/op(C2) | % vs C | ns/op(Falcon) | % vs C |
+| --- | --- | --- | --- | --- | --- | --- |
+| [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2)  | 28.772.169 | 28.772.169| 280.57 | 20.11% slower | 269.23 | 13.09% slower | 
+| [skew](http://web.archive.org/web/20120206015921/http://www.naskitis.com/skew1_1.bz2)  | 177.999.203 | 612.219 | 38.66 | 22.53% slower | 38.66 | 22.53% slower | 35.33 | 10.69% slower |
 
 ### Sampling with small Strings (avg 11 bytes)
 

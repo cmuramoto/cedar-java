@@ -263,7 +263,7 @@ Java tests run with:
 -Xmx128m -XX:MaxDirectMemorySize=4G
 ```
 
-Oddly enough java seems to perform better in skewed writes. 
+Oddly enough java seems to perform better in skewed writes, probably due to some realloc jitter.
 
 The measurement used was different and more granular from that employed in C code, with nano-second measurement for every operation
 
@@ -395,6 +395,7 @@ long get(long base, int pos, int end) {
 ```
 , which mirrors:
 
+
 ```C
 int da::find (const char* key, size_t& from, size_t& pos, const size_t len) const
 {
@@ -455,7 +456,7 @@ objdump -D cedar.o
   66:	c3                   	retq   
 ```
 
-(For java we need [hsdis](https://github.com/jkubrynski/profiling/raw/master/bin/linux-hsdis-amd64.so) in JAVA_HOME/lib)
+(For java we need [hsdis](https://github.com/cmuramoto/hsdis/raw/main/hsdis-amd64.so) in JAVA_HOME/lib)
 
 ```none
 -XX:-TieredCompilation -XX:+UseParallelGC -XX:+UnlockDiagnosticVMOptions -XX:+PrintAssembly
@@ -810,7 +811,7 @@ long get(long base, int pos, int end) {
   var from = 0L;
   var to = 0L;
   var addr = this.array.address();
-  var addr_4 = addr + 4L;
+  var addr_4 = addr + 4L; // 
 
   while (pos < end) {
     to = U.getInt(addr + (from << 3)) ^ u32(U.getByte(base + pos));
@@ -841,8 +842,17 @@ We can get rid of one instruction:
   
   0x00007f69ac2e7519:   cmp    %r8,%r13
 ```
+, which seems the best hotspot can do.
 
-In order to test Azul's claims about [Falcon JIT Compiler](https://www.azul.com/products/components/falcon-jit-compiler/) being faster than C2, we adapted the code and run the same benchmark. Indeed the generated code is about half the size of C2:
+Also, the method **find** wasn't inlined in the **run** loop, so there's always a safepoint check that *may* be triggered right before the method exit, even with GC free code:
+
+```assembly
+  0x00007f1f595e1074:   cmp    0x340(%r15),%rsp             ;   {poll_return}
+  0x00007f1f595e107b:   ja     0x00007f1f595e110c
+  0x00007f1f595e1081:   retq   
+```
+
+In order to test Azul's claims about [Falcon JIT Compiler](https://www.azul.com/products/components/falcon-jit-compiler/) being faster than C2, we adapted the code for Azulś jdk-15 and run the same benchmark. Indeed the generated code is about half the size of C2:
 
 ```assembly
 Disassembling com.nc.cedar.Cedar::get:
@@ -903,23 +913,24 @@ Disassembling com.nc.cedar.Cedar::get:
 0x3002ab23: c3                                retq                                  
 -----------
 ```
-
-and is in fact, slightly faster, but still no match to C++. 
+and is in fact, slightly faster, but still no match to C++. In both azul and hotspot it wasn't possible to trap any Safepoint jitter.
 
 In summary, replacing reads from memory segments and byte arrays with Unsafe, disregarding any bounds checks, we end up with:
 
 | Dataset  | #keys| #distinct | ns/op(C2) | % vs C | ns/op(Falcon) | % vs C |
 | --- | --- | --- | --- | --- | --- | --- |
 | [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2)  | 28.772.169 | 28.772.169| 280.57 | 20.11% slower | 269.23 | 13.09% slower | 
-| [skew](http://web.archive.org/web/20120206015921/http://www.naskitis.com/skew1_1.bz2)  | 177.999.203 | 612.219 | 38.66 | 22.53% slower | 38.66 | 22.53% slower | 35.33 | 10.69% slower |
+| [skew](http://web.archive.org/web/20120206015921/http://www.naskitis.com/skew1_1.bz2)  | 177.999.203 | 612.219 | 38.66 | 22.53% slower | 35.33 | 10.69% slower |
+
+
 
 ### Sampling with small Strings (avg 11 bytes)
 
-Using a sample of 64 keys on heap with average length of 11.08 (slightly larger than the dataset average which is 9.58) and running lookups in tight loops with guaranteed 0 allocations and less granular measurements
-
+Even though Tries can hold keys of "any" length, they are not meant to hold very large keys. To get an estimate of the throughput for my main use case (key lengths in between 10 and 12 bytes), I took a sample of 64 keys on heap with average length of 11.00 (slightly larger than the dataset average which is 9.58) and 
+run:
 
 ```java
-long run(ReducedCedar c) {
+long run(Cedar|ReducedCedar c) {
   var samples = this.samples;
   var ops = ids;
   var query = 0;
@@ -935,9 +946,11 @@ long run(ReducedCedar c) {
 
 double avg = run(...)/(ops*sampes.length);
 ```
-, we get:
 
-| Dataset  | #keys| #samples| #operations | ns/read (C2) |
+For this sample the numbers are:
+
+| Dataset  | #keys| #samples| #operations | ns/op (C2-std) | ns/op (C2-red) | ns/op (Falcon-std) | ns/op (Falcon-red) |
 | --- | --- | --- | --- | --- |
-| [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2)  | 28.772.169 | 64 | 1.841.418.816 | 83.17 |
+| [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2)  | 28.772.169 | 64 | 1.841.418.816 | 47.47 | 94.22 | 37.73 | 47.53 |
 
+Azul's jdk-15 version uses direct Unsafe calls, whereas jdk-16 uses MemorySegments. Bound's checking has it's toll and it shows mostly in ReducedTrie, but for the standard implementation it's not a very high one to pay.

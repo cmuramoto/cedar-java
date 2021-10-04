@@ -175,7 +175,7 @@ cedar = Cedar.deserialize(tmp, true);
 
 ### Caveats
 
-The trie expects strings to be **UTF-8** encoded. Since Java strings are encoded with either **Latin1**(~ascii) or **UTF-16**, and UTF-8 is 1-1 for characters in ascii domain, we can bypass encoding overhead by inspecting the String's *coder* value. If 0 (Latin1), we fetch the array via reflection (Unsafe for better speed), otherwise we convert to UTF-8 and create a new array.
+The trie expects strings to be **UTF-8** encoded. Since Java strings are encoded with either **Latin1**(~ascii) or **UTF-16**, and UTF-8 is 1-1 for characters in ascii domain, we can bypass string encoding overhead by inspecting the String's *coder* value. If 0 (Latin1), we fetch the array via reflection (Unsafe for better speed), otherwise we have to convert to UTF-8 which trigger an array allocation.
 
 If working with **UTF-8** entries, the offsets repported are based on the array obtained from *s.getBytes(UTF8)*. If offsets matter, it's better to work with pre encoded keys directly:
 
@@ -949,8 +949,8 @@ double avg = run(...)/(ops*sampes.length);
 
 For this sample the numbers are:
 
-| Dataset  | #keys| #samples| #operations | ns/op (C2-std) | ns/op (C2-red) | ns/op (Falcon-std) | ns/op (Falcon-red) |
-| --- | --- | --- | --- | --- |
+| Dataset  | #keys | #samples | #operations | ns/op(C2-std) | ns/op(C2-red) | ns/op(Falcon-std) | ns/op(Falcon-red) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 | [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2)  | 28.772.169 | 64 | 1.841.418.816 | 47.47 | 94.22 | 37.73 | 47.53 |
 
 Azul's jdk-15 version uses direct Unsafe calls, whereas jdk-16 uses MemorySegments. Bound's checking has it's toll and it shows mostly in ReducedTrie, but for the standard implementation it's not a very high one to pay.

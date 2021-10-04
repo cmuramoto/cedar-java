@@ -218,7 +218,7 @@ To cope with this, cedar can be instantiated with a reallocation cap:
 var cedar = new Cedar(4*1024*1024);
 ```
 
-If reallocation demands less than the cap (4MB), say 512 bytes, only 512 bytes will be used, otherwise up to 4MB will be used. This policy imposes a penalty for creating huge tries from scratch, but caps memory waste once it grows very large. For the [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2 keys dataset (~28 million keys with average length 9.58), default reallocation will demand 1290MB of memory, whereas using a 4MB policy will result in a trie demanding 1050MB.
+If reallocation demands less than the cap (4MB), say 512 bytes, only 512 bytes will be used, otherwise up to 4MB will be used. This policy imposes a penalty for creating huge tries from scratch, but caps memory waste once it grows very large. For the [distinct](http://web.archive.org/web/20120206015921/http://www.naskitis.com/distinct_1.bz2 keys dataset) (~28 million keys with average length 9.58), default reallocation will demand 1290MB of memory, whereas using a 4MB policy will result in a trie demanding 1050MB.
 
 Another option to reduce footprint is to use a **reduced** trie, which works only with ASCII. 
 
@@ -337,6 +337,39 @@ void benchLookup(Cedar cedar, byte[] data) {
 In order to attempt to get closer to C++ performance, the lookup code used was:
 
 ```java
+var data = Files.readAllBytes("...");
+var mem = U.allocateMemory(data.length);
+U.copyMemory(data, ARRAY_BYTE_BASE_OFFSET, null, mem, len);
+
+for (var i = 0; i < 10; i++) {
+  run(cedar, mem, len, c);
+}
+```
+
+where:
+
+
+```java
+void run(Cedar cedar, long data, int len) {
+
+  var start = 0;
+  var lines = 0;
+  var now = System.nanoTime();
+  
+  for (var i = 0; i < len; i++) {
+    if (U.getByte(data + i) == '\n') {
+      if ((cedar.get(data, start, i) & BaseCedar.ABSENT_OR_NO_VALUE) == 0) {
+        lines++;
+      }
+      start = i + 1;
+    }
+  }
+  var dq = (double) System.nanoTime() - now;
+
+  System.out.printf("(read) lines: %d. query time: %.2f. ns/q: %.2f.\n", lines, dq, dq / lines);
+}
+
+
 long get(long base, int pos, int end) {
   var from = 0L;
   var to = 0L;
@@ -359,8 +392,8 @@ long get(long base, int pos, int end) {
 
   return to & 0xFFFFFFFFL;
 }
-```, 
-which mirrors:
+```
+, which mirrors:
 
 ```C
 int da::find (const char* key, size_t& from, size_t& pos, const size_t len) const
@@ -743,7 +776,7 @@ Compiled method (c2)   45518  355             com.nc.cedar.Cedar::get (138 bytes
 --------------------------------------------------------------------------------
 ```
 
-We can see why it's nearly impossible to match C. Even with the amazing amount of inlining performed by C2, with 0 function calls in the hot path, the code (discarding deoptimization traps) is about 4 times larger than the same C code.
+We can see why it's nearly impossible to match C++. Even with the amazing amount of inlining performed by C2, with 0 function calls in the hot path, the code (discarding deoptimization traps) is about 4 times larger than the same C code.
 
 E.g., to fetch the 'check' field from memory (U.getInt(addr + (to << 3) + 4) -> array[to].check) Java needs 4 instructions to load the check field plus one to sign extend and store it in r13:
 
@@ -871,7 +904,7 @@ Disassembling com.nc.cedar.Cedar::get:
 -----------
 ```
 
-and is in fact, slightly faster, but still no match to C++.
+and is in fact, slightly faster, but still no match to C++. 
 
 In summary, replacing reads from memory segments and byte arrays with Unsafe, disregarding any bounds checks, we end up with:
 

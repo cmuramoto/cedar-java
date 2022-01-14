@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.stream.LongStream;
 
 import jdk.incubator.foreign.MemorySegment;
+import jdk.incubator.foreign.ResourceScope;
 
 final class Blocks extends CedarBuffer {
 	static final long UNIT = 20;
@@ -178,7 +179,11 @@ abstract class CedarBuffer {
 	 * @param unit
 	 */
 	CedarBuffer(long cap, long unit) {
-		this.buffer = MemorySegment.allocateNative(cap * unit, alignment()).share();
+		this.buffer = MemorySegment.allocateNative(cap * unit, alignment(), ResourceScope.newSharedScope());
+	}
+
+	final long address() {
+		return Bits.min(buffer);
 	}
 
 	abstract long alignment();
@@ -199,9 +204,10 @@ abstract class CedarBuffer {
 	}
 
 	final void close() {
+		ResourceScope r;
 		var b = buffer;
-		if (b != null && b.isAlive()) {
-			b.close();
+		if (b != null && (r = b.scope()) != null && r.isAlive() && !r.isImplicit()) {
+			r.close();
 		}
 	}
 
@@ -212,14 +218,14 @@ abstract class CedarBuffer {
 	final void grow(long more, long unit) {
 		var newLen = more * unit + buffer.byteSize();
 
-		var next = MemorySegment.allocateNative(newLen, alignment()).share();
+		var next = MemorySegment.allocateNative(newLen, alignment(), ResourceScope.newSharedScope());
 
 		var curr = this.buffer;
 
 		next.copyFrom(curr);
 
 		if (!curr.isMapped()) {
-			this.buffer.close();
+			curr.scope().close();
 		}
 
 		this.buffer = next;
@@ -243,7 +249,7 @@ abstract class CedarBuffer {
 			return;
 		}
 
-		var next = MemorySegment.allocateNative(newLen, alignment()).share();
+		var next = MemorySegment.allocateNative(newLen, alignment(), ResourceScope.newSharedScope());
 
 		// are we shrinking ???
 		if (curr.byteSize() > newLen) {
@@ -253,7 +259,7 @@ abstract class CedarBuffer {
 		}
 
 		if (!curr.isMapped()) {
-			curr.close();
+			curr.scope().close();
 		}
 
 		var ix = this.pos;
@@ -430,6 +436,18 @@ final class Nodes extends CedarBuffer {
 		return rv;
 	}
 
+	public int[][] heap() {
+		int len = (int) cap(UNIT);
+		var b = new int[len];
+		var c = new int[len];
+
+		for (var i = 0; i < len; i++) {
+			b[i] = base(i);
+			c[i] = check(i);
+		}
+		return new int[][]{ b, c };
+	}
+
 	long offset() {
 		return pos << 3;
 	}
@@ -470,7 +488,6 @@ final class Nodes extends CedarBuffer {
 		var objs = LongStream.range(0, pos).mapToObj(ix -> Map.of("base", base(ix), "check", check(ix))).toArray();
 		return Arrays.toString(objs);
 	}
-
 }
 
 /**

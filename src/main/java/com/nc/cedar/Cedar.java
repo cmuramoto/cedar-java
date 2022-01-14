@@ -6,7 +6,6 @@ import static com.nc.cedar.Bits.i32;
 import static com.nc.cedar.Bits.u32;
 import static com.nc.cedar.Bits.u64;
 import static com.nc.cedar.Bits.utf8;
-import static jdk.internal.misc.Unsafe.ARRAY_BYTE_BASE_OFFSET;
 
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -157,6 +156,29 @@ public final class Cedar extends BaseCedar {
 
 	public static Cedar deserialize(Path src, boolean copy) {
 		return BaseCedar.deserialize(Cedar::new, src, copy);
+	}
+
+	public static long getu(long addr, long base, int pos, int end) {
+		var from = 0L;
+		var to = 0L;
+
+		while (pos < end) {
+			to = U.getInt(addr + (from << 3)) ^ u32(U.getByte(base + pos));
+			if (U.getInt(addr + (to << 3) + 4) != from) {
+				return ABSENT;
+			}
+
+			from = to;
+			pos++;
+		}
+
+		to = U.getLong(addr + (U.getInt(addr + (from << 3)) << 3));
+
+		if ((to >>> 32) != from) {
+			return NO_VALUE;
+		}
+
+		return to & 0xFFFFFFFFL;
 	}
 
 	public Cedar() {
@@ -439,10 +461,65 @@ public final class Cedar extends BaseCedar {
 	public long get(byte[] key, int pos, int end) {
 		var from = 0L;
 		var to = 0L;
+		var addr = this.array.address();
+		var addr_4 = addr + 4; // hotspot fails to constant fold addr + 4 in loop
+
+		while (pos < end) {
+			to = u64(U.getInt(addr + (from << 3)) ^ u32(U.getByte(key, jdk.internal.misc.Unsafe.ARRAY_BYTE_BASE_OFFSET + pos)));
+			if (U.getInt(addr_4 + (to << 3)) != i32(from)) {
+				return ABSENT;
+			}
+
+			from = to;
+			pos++;
+		}
+
+		// minimize locals and memory fetches
+		to = U.getLong(addr + (U.getInt(addr + (from << 3)) << 3));
+
+		if ((to >>> 32) != from) {
+			return NO_VALUE;
+		}
+
+		return to & 0xFFFFFFFFL;
+	}
+
+	public long get(long base, int pos, int end) {
+		var from = 0L;
+		var to = 0L;
+		var addr = this.array.address();
+		var addr_4 = addr + 4;
+
+		for (; pos < end; pos++) {
+			to = U.getInt(addr + (from << 3)) ^ u32(U.getByte(base + pos));
+			if (U.getInt(addr_4 + (to << 3)) != from) {
+				return ABSENT;
+			}
+
+			from = to;
+		}
+
+		to = U.getLong(addr + (U.getInt(addr + (from << 3)) << 3));
+
+		if ((to >>> 32) != from) {
+			return NO_VALUE;
+		}
+
+		return to & 0xFFFFFFFFL;
+	}
+
+	@Override
+	public long get(String s) {
+		return get(utf8(s));
+	}
+
+	public long getSlow(byte[] key, int pos, int end) {
+		var from = 0L;
+		var to = 0L;
 		var array = this.array;
 
 		while (pos < end) {
-			to = u64(array.base(from) ^ u32(U.getByte(key, ARRAY_BYTE_BASE_OFFSET + pos)));
+			to = u64(array.base(from) ^ u32(key[pos]));
 			if (array.check(to) != i32(from)) {
 				return ABSENT;
 			}
@@ -458,11 +535,7 @@ public final class Cedar extends BaseCedar {
 		} else {
 			return array.base(b);
 		}
-	}
 
-	@Override
-	public long get(String s) {
-		return get(utf8(s));
 	}
 
 	public Stream<String> keys() {

@@ -21,6 +21,7 @@ public final class Bits {
 	static final Unsafe U;
 	static final long C_OFF;
 	static final long V_OFF;
+	static final long M_OFF;
 	static final byte[] EMPTY;
 	static final MethodHandle NO_COPY;
 
@@ -31,8 +32,10 @@ public final class Bits {
 			U = (Unsafe) f.get(null);
 			C_OFF = U.objectFieldOffset(String.class, "coder");
 			V_OFF = U.objectFieldOffset(String.class, "value");
+			M_OFF = U.objectFieldOffset(Class.forName("jdk.internal.foreign.NativeMemorySegmentImpl"), "min");
 			EMPTY = unwrap("");
-			NO_COPY = trusted().findConstructor(String.class, MethodType.methodType(void.class, byte[].class, byte.class));
+			var lookup = trusted();
+			NO_COPY = lookup.findConstructor(String.class, MethodType.methodType(void.class, byte[].class, byte.class));
 		} catch (Throwable e) {
 			throw new ExceptionInInitializerError(e);
 		}
@@ -48,6 +51,10 @@ public final class Bits {
 
 	public static long maxDirectMemory() {
 		return jdk.internal.misc.VM.maxDirectMemory();
+	}
+
+	public static long min(MemorySegment buffer) {
+		return U.getLong(buffer, M_OFF);
 	}
 
 	public static String newAscii(byte[] chunk) {

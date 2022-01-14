@@ -19,6 +19,7 @@ import java.util.OptionalInt;
 import java.util.stream.Stream;
 
 import jdk.incubator.foreign.MemorySegment;
+import jdk.incubator.foreign.ResourceScope;
 
 /**
  * Common structure and methods shared by {@link Cedar} and {@link ReducedCedar}. <br>
@@ -28,7 +29,6 @@ import jdk.incubator.foreign.MemorySegment;
  *
  * @author cmuramoto
  */
-@SuppressWarnings("preview")
 public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 
 	interface Factory<T extends BaseCedar> {
@@ -109,7 +109,7 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 			var ms = e.getValue();
 
 			if (copy) {
-				var seg = MemorySegment.allocateNative(ms.byteSize(), cb.alignment());
+				var seg = MemorySegment.allocateNative(ms.byteSize(), cb.alignment(), ResourceScope.newSharedScope());
 				seg.copyFrom(ms);
 				ms = seg;
 			}
@@ -130,13 +130,13 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	static <T extends BaseCedar> T deserialize(Factory<T> factory, Path src, boolean copy) {
 		MemorySegment ms = null;
 		try {
-			ms = MemorySegment.mapFile(src, 0, Files.size(src), MapMode.READ_WRITE).share();
+			ms = MemorySegment.mapFile(src, 0, Files.size(src), MapMode.READ_WRITE, ResourceScope.newSharedScope());
 			return deserialize(factory, ms, copy);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		} finally {
 			if (ms != null && copy) {
-				ms.close();
+				ms.scope().close();
 			}
 		}
 	}
@@ -676,7 +676,8 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	}
 
 	public void serialize(Path dst) {
-		try (var ms = MemorySegment.mapFile(dst, 0, imageSize(), MapMode.READ_WRITE)) {
+		try (var scope = ResourceScope.newConfinedScope()) {
+			var ms = MemorySegment.mapFile(dst, 0, imageSize(), MapMode.READ_WRITE, scope);
 			serialize(ms);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);

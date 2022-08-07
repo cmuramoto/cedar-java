@@ -9,6 +9,41 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 
 	static final ThreadLocal<byte[]> CHUNKS = ThreadLocal.withInitial(() -> new byte[9]);
 
+	static String directMem() {
+		return formatMem(Bits.maxDirectMemory());
+	}
+
+	static String formatMem(long mem) {
+		return memoryWithMaxScale(mem);
+	}
+
+	static String memoryWithMaxScale(long mem) {
+		var m = mem;
+		String sym;
+		if (mem < 1024) {
+			sym = "B";
+		} else if ((mem /= 1024) < 1024) {
+			sym = "KiB";
+		} else if ((mem /= 1024) < 1024) {
+			sym = "MiB";
+		} else if ((mem /= 1024) < 1024) {
+			sym = "GiB";
+		} else if ((mem /= 1024) < 1024) {
+			sym = "TiB";
+		} else if ((mem /= 1024) < 1024) {
+			sym = "PiB";
+		} else if ((mem /= 1024) < 1024) {
+			sym = "EiB";
+		} else if ((mem /= 1024) < 1024) {
+			sym = "ZiB";
+		} else {
+			sym = "B";
+			mem = m;
+		}
+
+		return mem + sym;
+	}
+
 	static byte[] pad(byte[] v, int n) {
 		for (var ix = v.length - 1; ix >= 0; ix--) {
 			v[ix] = (byte) ('0' + (n % 10));
@@ -28,6 +63,10 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 		return utf8;
 	}
 
+	static boolean t(long v) {
+		return true;
+	}
+
 	long alloc;
 
 	long query;
@@ -35,7 +74,7 @@ public abstract class BaseHugeCedarTests extends BaseCedarTests {
 	long store;
 
 	void assumeEnoughMemory() {
-		Assume.assumeTrue("This test requires -XX:MaxDirectMemorySize=4G", Bits.maxDirectMemory() >= 4L * 1024 * 1024 * 1024);
+		Assume.assumeTrue(String.format("This test requires -XX:MaxDirectMemorySize=4G (Current: %s)", directMem()), Bits.maxDirectMemory() >= 4L * 1024 * 1024 * 1024);
 	}
 
 	void fill(BaseCedar cedar, int max) {

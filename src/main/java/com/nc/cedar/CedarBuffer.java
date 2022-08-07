@@ -1,17 +1,15 @@
 package com.nc.cedar;
 
-import static jdk.incubator.foreign.MemoryAccess.getByteAtOffset;
-import static jdk.incubator.foreign.MemoryAccess.getIntAtOffset;
-import static jdk.incubator.foreign.MemoryAccess.getShortAtOffset;
-import static jdk.incubator.foreign.MemoryAccess.setByteAtOffset;
-import static jdk.incubator.foreign.MemoryAccess.setIntAtOffset;
-import static jdk.incubator.foreign.MemoryAccess.setShortAtOffset;
+import static jdk.incubator.foreign.ValueLayout.JAVA_BYTE;
+import static jdk.incubator.foreign.ValueLayout.JAVA_INT;
+import static jdk.incubator.foreign.ValueLayout.JAVA_SHORT;
 
 import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.LongStream;
 
 import jdk.incubator.foreign.MemorySegment;
+import jdk.incubator.foreign.ResourceScope;
 
 final class Blocks extends CedarBuffer {
 	static final long UNIT = 20;
@@ -45,11 +43,11 @@ final class Blocks extends CedarBuffer {
 	}
 
 	int head(long ix) {
-		return getIntAtOffset(buffer, safeOffset(ix) + 16);
+		return buffer.get(JAVA_INT, safeOffset(ix) + 16);
 	}
 
 	void head(long ix, int value) {
-		setIntAtOffset(buffer, safeOffset(ix) + 16, value);
+		buffer.set(JAVA_INT, safeOffset(ix) + 16, value);
 	}
 
 	void incrementNum(long ix, int inc) {
@@ -58,19 +56,19 @@ final class Blocks extends CedarBuffer {
 	}
 
 	int next(long ix) {
-		return getIntAtOffset(buffer, safeOffset(ix) + 4);
+		return buffer.get(JAVA_INT, safeOffset(ix) + 4);
 	}
 
 	void next(long ix, int v) {
-		setIntAtOffset(buffer, safeOffset(ix) + 4, v);
+		buffer.set(JAVA_INT, safeOffset(ix) + 4, v);
 	}
 
 	short num(long ix) {
-		return getShortAtOffset(buffer, safeOffset(ix) + 8);
+		return buffer.get(JAVA_SHORT, safeOffset(ix) + 8);
 	}
 
 	void num(long ix, short v) {
-		setShortAtOffset(buffer, safeOffset(ix) + 8, v);
+		buffer.set(JAVA_SHORT, safeOffset(ix) + 8, v);
 	}
 
 	long offset() {
@@ -78,23 +76,23 @@ final class Blocks extends CedarBuffer {
 	}
 
 	int prev(long ix) {
-		return getIntAtOffset(buffer, safeOffset(ix));
+		return buffer.get(JAVA_INT, safeOffset(ix));
 	}
 
 	void prev(long ix, int v) {
-		setIntAtOffset(buffer, safeOffset(ix), v);
+		buffer.set(JAVA_INT, safeOffset(ix), v);
 	}
 
 	void push(int prev, int next, short num, short reject, int trial, int head) {
 		require(1);
 		var off = offset();
 		var buffer = this.buffer;
-		setIntAtOffset(buffer, off, prev);
-		setIntAtOffset(buffer, off + 4, next);
-		setShortAtOffset(buffer, off + 8, num);
-		setShortAtOffset(buffer, off + 10, reject);
-		setIntAtOffset(buffer, off + 12, trial);
-		setIntAtOffset(buffer, off + 16, head);
+		buffer.set(JAVA_INT, off, prev);
+		buffer.set(JAVA_INT, off + 4, next);
+		buffer.set(JAVA_SHORT, off + 8, num);
+		buffer.set(JAVA_SHORT, off + 10, reject);
+		buffer.set(JAVA_INT, off + 12, trial);
+		buffer.set(JAVA_INT, off + 16, head);
 
 		this.pos++;
 	}
@@ -104,11 +102,11 @@ final class Blocks extends CedarBuffer {
 	}
 
 	short reject(long ix) {
-		return getShortAtOffset(buffer, safeOffset(ix) + 10);
+		return buffer.get(JAVA_SHORT, safeOffset(ix) + 10);
 	}
 
 	void reject(long ix, short v) {
-		setShortAtOffset(buffer, safeOffset(ix) + 10, v);
+		buffer.set(JAVA_SHORT, safeOffset(ix) + 10, v);
 	}
 
 	void require(long n) {
@@ -123,12 +121,12 @@ final class Blocks extends CedarBuffer {
 
 	@Override
 	void set(MemorySegment buffer, long off) {
-		setIntAtOffset(buffer, off, 0);
-		setIntAtOffset(buffer, off + 4, 0);
-		setShortAtOffset(buffer, off + 8, (short) 256);
-		setShortAtOffset(buffer, off + 10, (short) 257);
-		setIntAtOffset(buffer, off + 12, 0);
-		setIntAtOffset(buffer, off + 16, 0);
+		buffer.set(JAVA_INT, off, 0);
+		buffer.set(JAVA_INT, off + 4, 0);
+		buffer.set(JAVA_SHORT, off + 8, (short) 256);
+		buffer.set(JAVA_SHORT, off + 10, (short) 257);
+		buffer.set(JAVA_INT, off + 12, 0);
+		buffer.set(JAVA_INT, off + 16, 0);
 	}
 
 	@Override
@@ -143,11 +141,11 @@ final class Blocks extends CedarBuffer {
 	}
 
 	int trial(long ix) {
-		return getIntAtOffset(buffer, safeOffset(ix) + 12);
+		return buffer.get(JAVA_INT, safeOffset(ix) + 12);
 	}
 
 	void trial(long ix, int v) {
-		setIntAtOffset(buffer, safeOffset(ix) + 12, v);
+		buffer.set(JAVA_INT, safeOffset(ix) + 12, v);
 	}
 }
 
@@ -178,7 +176,7 @@ abstract class CedarBuffer {
 	 * @param unit
 	 */
 	CedarBuffer(long cap, long unit) {
-		this.buffer = MemorySegment.allocateNative(cap * unit, alignment()).share();
+		this.buffer = MemorySegment.allocateNative(cap * unit, alignment(), ResourceScope.newSharedScope());
 	}
 
 	abstract long alignment();
@@ -200,8 +198,8 @@ abstract class CedarBuffer {
 
 	final void close() {
 		var b = buffer;
-		if (b != null && b.isAlive()) {
-			b.close();
+		if (b != null && b.scope().isAlive()) {
+			b.scope().close();
 		}
 	}
 
@@ -212,14 +210,14 @@ abstract class CedarBuffer {
 	final void grow(long more, long unit) {
 		var newLen = more * unit + buffer.byteSize();
 
-		var next = MemorySegment.allocateNative(newLen, alignment()).share();
+		var next = MemorySegment.allocateNative(newLen, alignment(), ResourceScope.newSharedScope());
 
 		var curr = this.buffer;
 
 		next.copyFrom(curr);
 
 		if (!curr.isMapped()) {
-			this.buffer.close();
+			this.buffer.scope().close();
 		}
 
 		this.buffer = next;
@@ -243,7 +241,7 @@ abstract class CedarBuffer {
 			return;
 		}
 
-		var next = MemorySegment.allocateNative(newLen, alignment()).share();
+		var next = MemorySegment.allocateNative(newLen, alignment(), ResourceScope.newSharedScope());
 
 		// are we shrinking ???
 		if (curr.byteSize() > newLen) {
@@ -253,7 +251,7 @@ abstract class CedarBuffer {
 		}
 
 		if (!curr.isMapped()) {
-			curr.close();
+			curr.scope().close();
 		}
 
 		var ix = this.pos;
@@ -311,11 +309,11 @@ final class NodeInfos extends CedarBuffer {
 	}
 
 	byte child(long ix) {
-		return getByteAtOffset(buffer, safeOffset(ix) + 1L);
+		return buffer.get(JAVA_BYTE, safeOffset(ix) + 1L);
 	}
 
 	void child(long ix, byte v) {
-		setByteAtOffset(buffer, safeOffset(ix) + 1, v);
+		buffer.set(JAVA_BYTE, safeOffset(ix) + 1, v);
 	}
 
 	long offset() {
@@ -325,8 +323,8 @@ final class NodeInfos extends CedarBuffer {
 	void push(byte sibling, byte child) {
 		require(1);
 		var off = offset();
-		setByteAtOffset(buffer, off, sibling);
-		setByteAtOffset(buffer, off + 1, child);
+		buffer.set(JAVA_BYTE, off, sibling);
+		buffer.set(JAVA_BYTE, off + 1, child);
 
 		pos++;
 	}
@@ -343,21 +341,21 @@ final class NodeInfos extends CedarBuffer {
 
 	void set(long ix, byte sibling, byte child) {
 		var off = safeOffset(ix);
-		setByteAtOffset(buffer, off, sibling);
-		setByteAtOffset(buffer, off + 1, child);
+		buffer.set(JAVA_BYTE, off, sibling);
+		buffer.set(JAVA_BYTE, off + 1, child);
 	}
 
 	@Override
 	public void set(MemorySegment buffer, long off) {
-		setShortAtOffset(buffer, off, (short) 0);
+		buffer.set(JAVA_SHORT, off, (short) 0);
 	}
 
 	byte sibling(long ix) {
-		return getByteAtOffset(buffer, safeOffset(ix));
+		return buffer.get(JAVA_BYTE, safeOffset(ix));
 	}
 
 	void sibling(long ix, byte v) {
-		setByteAtOffset(buffer, safeOffset(ix), v);
+		buffer.set(JAVA_BYTE, safeOffset(ix), v);
 	}
 }
 
@@ -404,29 +402,29 @@ final class Nodes extends CedarBuffer {
 	}
 
 	int base(long ix) {
-		return getIntAtOffset(buffer, safeOffset(ix));
+		return buffer.get(JAVA_INT, safeOffset(ix));
 	}
 
 	void base(long ix, int v) {
-		setIntAtOffset(buffer, safeOffset(ix), v);
+		buffer.set(JAVA_INT, safeOffset(ix), v);
 	}
 
 	int base_r(long ix) {
-		return -(getIntAtOffset(buffer, safeOffset(ix)) + 1);
+		return -(buffer.get(JAVA_INT, safeOffset(ix)) + 1);
 	}
 
 	int check(long ix) {
-		return getIntAtOffset(buffer, safeOffset(ix) + 4);
+		return buffer.get(JAVA_INT, safeOffset(ix) + 4);
 	}
 
 	void check(long ix, int v) {
-		setIntAtOffset(buffer, safeOffset(ix) + 4, v);
+		buffer.set(JAVA_INT, safeOffset(ix) + 4, v);
 	}
 
 	int getAndSetBase(long ix, int v) {
 		var off = safeOffset(ix);
-		var rv = getIntAtOffset(buffer, off);
-		setIntAtOffset(buffer, off, v);
+		var rv = buffer.get(JAVA_INT, off);
+		buffer.set(JAVA_INT, off, v);
 		return rv;
 	}
 
@@ -438,8 +436,8 @@ final class Nodes extends CedarBuffer {
 		require(1);
 		var off = offset();
 		var b = buffer;
-		setIntAtOffset(b, off, base);
-		setIntAtOffset(b, off + 4, check);
+		b.set(JAVA_INT, off, base);
+		b.set(JAVA_INT, off + 4, check);
 		pos++;
 	}
 
@@ -455,20 +453,24 @@ final class Nodes extends CedarBuffer {
 
 	void set(long ix, int base, int check) {
 		var off = safeOffset(ix);
-		setIntAtOffset(buffer, off, base);
-		setIntAtOffset(buffer, off + 4, check);
+		buffer.set(JAVA_INT, off, base);
+		buffer.set(JAVA_INT, off + 4, check);
 	}
 
 	@Override
 	void set(MemorySegment buffer, long off) {
-		setIntAtOffset(buffer, off, 0);
-		setIntAtOffset(buffer, off + 4, 0);
+		buffer.set(JAVA_INT, off, 0);
+		buffer.set(JAVA_INT, off + 4, 0);
 	}
 
 	@Override
 	public String toString() {
 		var objs = LongStream.range(0, pos).mapToObj(ix -> Map.of("base", base(ix), "check", check(ix))).toArray();
 		return Arrays.toString(objs);
+	}
+
+	public final long address() {
+		return Bits.min(buffer);
 	}
 
 }
@@ -508,7 +510,7 @@ final class Rejects extends CedarBuffer {
 	}
 
 	short at(long ix) {
-		return getShortAtOffset(buffer, safeOffset(ix));
+		return buffer.get(JAVA_SHORT, safeOffset(ix));
 	}
 
 	long offset() {
@@ -519,7 +521,7 @@ final class Rejects extends CedarBuffer {
 		require(1);
 		var off = offset();
 		var b = buffer;
-		setShortAtOffset(b, off, r);
+		b.set(JAVA_SHORT, off, r);
 		pos++;
 	}
 
@@ -530,12 +532,12 @@ final class Rejects extends CedarBuffer {
 	}
 
 	void set(long ix, short v) {
-		setShortAtOffset(buffer, safeOffset(ix), v);
+		buffer.set(JAVA_SHORT, safeOffset(ix), v);
 	}
 
 	@Override
 	void set(MemorySegment buffer, long offset) {
-		setShortAtOffset(buffer, offset, (short) 0);
+		buffer.set(JAVA_SHORT, offset, (short) 0);
 	}
 
 	short[] toArray() {

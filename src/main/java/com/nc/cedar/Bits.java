@@ -10,8 +10,9 @@ import java.util.Spliterators;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
+import static jdk.incubator.foreign.ValueLayout.JAVA_BYTE;
 
-import jdk.incubator.foreign.MemoryAccess;
+
 import jdk.incubator.foreign.MemorySegment;
 import jdk.internal.misc.Unsafe;
 
@@ -21,6 +22,8 @@ public final class Bits {
 	static final Unsafe U;
 	static final long C_OFF;
 	static final long V_OFF;
+	static final long M_OFF;
+
 	static final byte[] EMPTY;
 	static final MethodHandle NO_COPY;
 
@@ -31,6 +34,7 @@ public final class Bits {
 			U = (Unsafe) f.get(null);
 			C_OFF = U.objectFieldOffset(String.class, "coder");
 			V_OFF = U.objectFieldOffset(String.class, "value");
+			M_OFF = U.objectFieldOffset(Class.forName("jdk.internal.foreign.NativeMemorySegmentImpl"), "min");
 			EMPTY = unwrap("");
 			NO_COPY = trusted().findConstructor(String.class, MethodType.methodType(void.class, byte[].class, byte.class));
 		} catch (Throwable e) {
@@ -46,6 +50,10 @@ public final class Bits {
 		return (int) v;
 	}
 
+	public static long min(MemorySegment buffer) {
+		return U.getLong(buffer, M_OFF);
+	}
+	
 	public static long maxDirectMemory() {
 		return jdk.internal.misc.VM.maxDirectMemory();
 	}
@@ -78,7 +86,7 @@ public final class Bits {
 
 				if (p < c.byteSize()) {
 					do {
-						if (MemoryAccess.getByteAtOffset(c, p) == s) {
+						if (c.get(JAVA_BYTE, p) == s) {
 							break;
 						}
 						p++;
@@ -133,7 +141,7 @@ public final class Bits {
 			}
 
 			if (len > 0 && len <= Integer.MAX_VALUE) {
-				var chunk = contiguous.asSlice(prev, len).toByteArray();
+				var chunk = contiguous.asSlice(prev, len).toArray(JAVA_BYTE);
 				ptr.v = curr + 1;
 
 				return new String(chunk, UTF8);

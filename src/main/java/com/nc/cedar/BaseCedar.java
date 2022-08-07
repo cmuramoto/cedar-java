@@ -3,10 +3,8 @@ package com.nc.cedar;
 import static com.nc.cedar.Bits.i32;
 import static com.nc.cedar.Bits.u32;
 import static com.nc.cedar.Bits.u64;
-import static jdk.incubator.foreign.MemoryAccess.getIntAtOffset;
-import static jdk.incubator.foreign.MemoryAccess.getLongAtOffset;
-import static jdk.incubator.foreign.MemoryAccess.setIntAtOffset;
-import static jdk.incubator.foreign.MemoryAccess.setLongAtOffset;
+import static jdk.incubator.foreign.ValueLayout.JAVA_INT;
+import static jdk.incubator.foreign.ValueLayout.JAVA_LONG;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -19,6 +17,7 @@ import java.util.OptionalInt;
 import java.util.stream.Stream;
 
 import jdk.incubator.foreign.MemorySegment;
+import jdk.incubator.foreign.ResourceScope;
 
 /**
  * Common structure and methods shared by {@link Cedar} and {@link ReducedCedar}. <br>
@@ -28,8 +27,8 @@ import jdk.incubator.foreign.MemorySegment;
  *
  * @author cmuramoto
  */
-@SuppressWarnings("preview")
-public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
+@SuppressWarnings({ "preview", "java:S1121", "java:S117", "java:S116" })
+public sealed abstract class BaseCedar permits Cedar, ReducedCedar {
 
 	interface Factory<T extends BaseCedar> {
 		T allocate(Nodes array, NodeInfos infos, Blocks blocks, Rejects reject, int flags);
@@ -68,33 +67,34 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		return rv;
 	}
 
+	@SuppressWarnings({ "java:S1121", "java:S117" })
 	static <T extends BaseCedar> T deserialize(Factory<T> factory, MemorySegment src, boolean copy) {
 		var off = 0L;
-		var flags = getIntAtOffset(src, off);
-		var blocks_head_full = getIntAtOffset(src, off += 4);
-		var blocks_head_closed = getIntAtOffset(src, off += 4);
-		var blocks_head_open = getIntAtOffset(src, off += 4);
-		var max_trial = getIntAtOffset(src, off += 4);
-		var capacity = getLongAtOffset(src, off += 4);
-		var size = getLongAtOffset(src, off += 8);
+		var flags = src.get(JAVA_INT, off);
+		var blocks_head_full = src.get(JAVA_INT, off += 4);
+		var blocks_head_closed = src.get(JAVA_INT, off += 4);
+		var blocks_head_open = src.get(JAVA_INT, off += 4);
+		var max_trial = src.get(JAVA_INT, off += 4);
+		var capacity = src.get(JAVA_LONG, off += 4);
+		var size = src.get(JAVA_LONG, off += 8);
 
 		var array = new Nodes();
-		array.pos = getLongAtOffset(src, off += 8);
+		array.pos = src.get(JAVA_LONG, off += 8);
 
 		var infos = new NodeInfos();
-		infos.pos = getLongAtOffset(src, off += 8);
+		infos.pos = src.get(JAVA_LONG, off += 8);
 
 		var blocks = new Blocks();
-		blocks.pos = getLongAtOffset(src, off += 8);
+		blocks.pos = src.get(JAVA_LONG, off += 8);
 
 		var rejects = new Rejects();
-		rejects.pos = getLongAtOffset(src, off += 8);
+		rejects.pos = src.get(JAVA_LONG, off += 8);
 
 		var lengths = new long[]{ //
-				getLongAtOffset(src, off += 8), //
-				getLongAtOffset(src, off += 8), //
-				getLongAtOffset(src, off += 8), //
-				getLongAtOffset(src, off += 8) //
+				src.get(JAVA_LONG, off += 8), //
+				src.get(JAVA_LONG, off += 8), //
+				src.get(JAVA_LONG, off += 8), //
+				src.get(JAVA_LONG, off += 8) //
 		};
 
 		var slices = Map.of( //
@@ -109,7 +109,7 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 			var ms = e.getValue();
 
 			if (copy) {
-				var seg = MemorySegment.allocateNative(ms.byteSize(), cb.alignment());
+				var seg = MemorySegment.allocateNative(ms.byteSize(), cb.alignment(), ResourceScope.newSharedScope());
 				seg.copyFrom(ms);
 				ms = seg;
 			}
@@ -130,13 +130,13 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	static <T extends BaseCedar> T deserialize(Factory<T> factory, Path src, boolean copy) {
 		MemorySegment ms = null;
 		try {
-			ms = MemorySegment.mapFile(src, 0, Files.size(src), MapMode.READ_WRITE).share();
+			ms = MemorySegment.mapFile(src, 0, Files.size(src), MapMode.READ_WRITE, ResourceScope.newSharedScope());
 			return deserialize(factory, ms, copy);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		} finally {
 			if (ms != null && copy) {
-				ms.close();
+				ms.scope().close();
 			}
 		}
 	}
@@ -194,7 +194,7 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 		var cap = this.capacity;
 		if (size == cap) {
 			var r = realloc();
-			var inc = r;
+			long inc;
 
 			if (r > 0) {
 				if ((cap + r) > (cap + cap)) {
@@ -651,23 +651,23 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	public void serialize(MemorySegment dst) {
 		var off = 0L;
 
-		setIntAtOffset(dst, off, flags);
-		setIntAtOffset(dst, off += 4, blocks_head_full);
-		setIntAtOffset(dst, off += 4, blocks_head_closed);
-		setIntAtOffset(dst, off += 4, blocks_head_open);
-		setIntAtOffset(dst, off += 4, max_trial);
-		setLongAtOffset(dst, off += 4, capacity);
-		setLongAtOffset(dst, off += 8, size);
+		dst.set(JAVA_INT, off, flags);
+		dst.set(JAVA_INT, off += 4, blocks_head_full);
+		dst.set(JAVA_INT, off += 4, blocks_head_closed);
+		dst.set(JAVA_INT, off += 4, blocks_head_open);
+		dst.set(JAVA_INT, off += 4, max_trial);
+		dst.set(JAVA_LONG, off += 4, capacity);
+		dst.set(JAVA_LONG, off += 8, size);
 
-		setLongAtOffset(dst, off += 8, array.pos);
-		setLongAtOffset(dst, off += 8, infos.pos);
-		setLongAtOffset(dst, off += 8, blocks.pos);
-		setLongAtOffset(dst, off += 8, reject.pos);
+		dst.set(JAVA_LONG, off += 8, array.pos);
+		dst.set(JAVA_LONG, off += 8, infos.pos);
+		dst.set(JAVA_LONG, off += 8, blocks.pos);
+		dst.set(JAVA_LONG, off += 8, reject.pos);
 
-		setLongAtOffset(dst, off += 8, array.byteSize());
-		setLongAtOffset(dst, off += 8, infos.byteSize());
-		setLongAtOffset(dst, off += 8, blocks.byteSize());
-		setLongAtOffset(dst, off += 8, reject.byteSize());
+		dst.set(JAVA_LONG, off += 8, array.byteSize());
+		dst.set(JAVA_LONG, off += 8, infos.byteSize());
+		dst.set(JAVA_LONG, off += 8, blocks.byteSize());
+		dst.set(JAVA_LONG, off += 8, reject.byteSize());
 
 		dst.asSlice(off += 8, array.byteSize()).copyFrom(array.buffer);
 		dst.asSlice(off += array.byteSize(), infos.byteSize()).copyFrom(infos.buffer);
@@ -676,7 +676,8 @@ public sealed abstract class BaseCedar permits Cedar,ReducedCedar {
 	}
 
 	public void serialize(Path dst) {
-		try (var ms = MemorySegment.mapFile(dst, 0, imageSize(), MapMode.READ_WRITE)) {
+		try (var scope = ResourceScope.newSharedScope()) {
+			var ms = MemorySegment.mapFile(dst, 0, imageSize(), MapMode.READ_WRITE, scope);
 			serialize(ms);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);

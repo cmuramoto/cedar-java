@@ -465,6 +465,36 @@ public final class Cedar extends BaseCedar {
 		return get(utf8(s));
 	}
 
+	public long getUnsafe(byte[] key) {
+		return getUnsafe(key, 0, key.length);
+	}
+
+	public long getUnsafe(byte[] key, int pos, int end) {
+		var from = 0L;
+		var to = 0L;
+		var addr = this.array.address();
+		var addr_4 = addr + 4; // hotspot fails to constant fold addr + 4 in loop
+
+		while (pos < end) {
+			to = u64(U.getInt(addr + (from << 3)) ^ u32(U.getByte(key, jdk.internal.misc.Unsafe.ARRAY_BYTE_BASE_OFFSET + pos)));
+			if (U.getInt(addr_4 + (to << 3)) != i32(from)) {
+				return ABSENT;
+			}
+
+			from = to;
+			pos++;
+		}
+
+		// minimize locals and memory fetches
+		to = U.getLong(addr + (U.getInt(addr + (from << 3)) << 3));
+
+		if ((to >>> 32) != from) {
+			return NO_VALUE;
+		}
+
+		return to & 0xFFFFFFFFL;
+	}
+
 	public Stream<String> keys() {
 		return predict("").map(this::suffix);
 	}

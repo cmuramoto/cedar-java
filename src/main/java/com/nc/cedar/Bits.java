@@ -1,5 +1,8 @@
 package com.nc.cedar;
 
+import static java.lang.foreign.ValueLayout.JAVA_BYTE;
+
+import java.lang.foreign.MemorySegment;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
@@ -10,10 +13,7 @@ import java.util.Spliterators;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-import static jdk.incubator.foreign.ValueLayout.JAVA_BYTE;
 
-
-import jdk.incubator.foreign.MemorySegment;
 import jdk.internal.misc.Unsafe;
 
 public final class Bits {
@@ -50,12 +50,12 @@ public final class Bits {
 		return (int) v;
 	}
 
-	public static long min(MemorySegment buffer) {
-		return U.getLong(buffer, M_OFF);
-	}
-	
 	public static long maxDirectMemory() {
 		return jdk.internal.misc.VM.maxDirectMemory();
+	}
+
+	public static long min(MemorySegment buffer) {
+		return U.getLong(buffer, M_OFF);
 	}
 
 	public static String newAscii(byte[] chunk) {

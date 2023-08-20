@@ -3,21 +3,22 @@ package com.nc.cedar;
 import static com.nc.cedar.Bits.i32;
 import static com.nc.cedar.Bits.u32;
 import static com.nc.cedar.Bits.u64;
-import static jdk.incubator.foreign.ValueLayout.JAVA_INT;
-import static jdk.incubator.foreign.ValueLayout.JAVA_LONG;
+import static java.lang.foreign.ValueLayout.JAVA_INT;
+import static java.lang.foreign.ValueLayout.JAVA_LONG;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.stream.Stream;
-
-import jdk.incubator.foreign.MemorySegment;
-import jdk.incubator.foreign.ResourceScope;
 
 /**
  * Common structure and methods shared by {@link Cedar} and {@link ReducedCedar}. <br>
@@ -109,7 +110,7 @@ public sealed abstract class BaseCedar permits Cedar, ReducedCedar {
 			var ms = e.getValue();
 
 			if (copy) {
-				var seg = MemorySegment.allocateNative(ms.byteSize(), cb.alignment(), ResourceScope.newSharedScope());
+				var seg = MemorySegment.allocateNative(ms.byteSize(), cb.alignment(), Arena.openShared().scope());
 				seg.copyFrom(ms);
 				ms = seg;
 			}
@@ -129,14 +130,14 @@ public sealed abstract class BaseCedar permits Cedar, ReducedCedar {
 
 	static <T extends BaseCedar> T deserialize(Factory<T> factory, Path src, boolean copy) {
 		MemorySegment ms = null;
-		try {
-			ms = MemorySegment.mapFile(src, 0, Files.size(src), MapMode.READ_WRITE, ResourceScope.newSharedScope());
+		try (var ch = FileChannel.open(src, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+			ms = ch.map(MapMode.READ_WRITE, 0, Files.size(src), Arena.openShared().scope());
 			return deserialize(factory, ms, copy);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		} finally {
 			if (ms != null && copy) {
-				ms.scope().close();
+				// ms.scope().close();
 			}
 		}
 	}
@@ -676,8 +677,8 @@ public sealed abstract class BaseCedar permits Cedar, ReducedCedar {
 	}
 
 	public void serialize(Path dst) {
-		try (var scope = ResourceScope.newSharedScope()) {
-			var ms = MemorySegment.mapFile(dst, 0, imageSize(), MapMode.READ_WRITE, scope);
+		try (var arena = Arena.openShared(); var ch = FileChannel.open(dst, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+			var ms = ch.map(MapMode.READ_WRITE, 0, imageSize(), arena.scope());
 			serialize(ms);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);

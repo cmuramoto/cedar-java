@@ -6,14 +6,13 @@ import static com.nc.cedar.Bits.u32;
 import static com.nc.cedar.Bits.u64;
 import static com.nc.cedar.Bits.utf8;
 
+import java.lang.foreign.MemorySegment;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-
-import jdk.incubator.foreign.MemorySegment;
 
 public final class ReducedCedar extends BaseCedar {
 

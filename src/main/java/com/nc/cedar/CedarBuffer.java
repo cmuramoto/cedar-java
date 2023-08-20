@@ -1,15 +1,14 @@
 package com.nc.cedar;
 
-import static jdk.incubator.foreign.ValueLayout.JAVA_BYTE;
-import static jdk.incubator.foreign.ValueLayout.JAVA_INT;
-import static jdk.incubator.foreign.ValueLayout.JAVA_SHORT;
+import static java.lang.foreign.ValueLayout.JAVA_BYTE;
+import static java.lang.foreign.ValueLayout.JAVA_INT;
+import static java.lang.foreign.ValueLayout.JAVA_SHORT;
 
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.LongStream;
-
-import jdk.incubator.foreign.MemorySegment;
-import jdk.incubator.foreign.ResourceScope;
 
 final class Blocks extends CedarBuffer {
 	static final long UNIT = 20;
@@ -176,7 +175,7 @@ abstract class CedarBuffer {
 	 * @param unit
 	 */
 	CedarBuffer(long cap, long unit) {
-		this.buffer = MemorySegment.allocateNative(cap * unit, alignment(), ResourceScope.newSharedScope());
+		this.buffer = MemorySegment.allocateNative(cap * unit, alignment(), Arena.openShared().scope());
 	}
 
 	abstract long alignment();
@@ -199,7 +198,7 @@ abstract class CedarBuffer {
 	final void close() {
 		var b = buffer;
 		if (b != null && b.scope().isAlive()) {
-			b.scope().close();
+			// b.scope().close();
 		}
 	}
 
@@ -210,14 +209,14 @@ abstract class CedarBuffer {
 	final void grow(long more, long unit) {
 		var newLen = more * unit + buffer.byteSize();
 
-		var next = MemorySegment.allocateNative(newLen, alignment(), ResourceScope.newSharedScope());
+		var next = MemorySegment.allocateNative(newLen, alignment(), Arena.openShared().scope());
 
 		var curr = this.buffer;
 
 		next.copyFrom(curr);
 
 		if (!curr.isMapped()) {
-			this.buffer.scope().close();
+			// this.buffer.scope().close();
 		}
 
 		this.buffer = next;
@@ -241,7 +240,7 @@ abstract class CedarBuffer {
 			return;
 		}
 
-		var next = MemorySegment.allocateNative(newLen, alignment(), ResourceScope.newSharedScope());
+		var next = MemorySegment.allocateNative(newLen, alignment(), Arena.openShared().scope());
 
 		// are we shrinking ???
 		if (curr.byteSize() > newLen) {
@@ -251,7 +250,7 @@ abstract class CedarBuffer {
 		}
 
 		if (!curr.isMapped()) {
-			curr.scope().close();
+			// curr.scope().close();
 		}
 
 		var ix = this.pos;
@@ -396,6 +395,10 @@ final class Nodes extends CedarBuffer {
 		super(cap, UNIT);
 	}
 
+	public final long address() {
+		return Bits.min(buffer);
+	}
+
 	@Override
 	long alignment() {
 		return 8;
@@ -467,10 +470,6 @@ final class Nodes extends CedarBuffer {
 	public String toString() {
 		var objs = LongStream.range(0, pos).mapToObj(ix -> Map.of("base", base(ix), "check", check(ix))).toArray();
 		return Arrays.toString(objs);
-	}
-
-	public final long address() {
-		return Bits.min(buffer);
 	}
 
 }
